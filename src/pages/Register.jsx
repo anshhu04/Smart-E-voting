@@ -9,7 +9,8 @@ export default function Register() {
     email: "",
     studentId: "",
     password: "",
-    role: "Student",
+    role: "student",
+    adminKey: "",
   });
 
   const handleChange = (e) => {
@@ -20,31 +21,72 @@ export default function Register() {
   };
 
   const handleRegister = () => {
-    const { name, email, studentId, password } = formData;
+    const { name, email, studentId, password, role, adminKey } = formData;
 
     if (!name || !email || !studentId || !password) {
       alert("Please fill all fields");
+
       return;
     }
 
-    localStorage.setItem("user", JSON.stringify(formData));
+    if (role === "admin" && adminKey !== "ADMIN123") {
+      alert("Invalid Admin Secret Key ❌");
+
+      return;
+    }
+
+    const users = JSON.parse(localStorage.getItem("users")) || [];
+
+    const userExists = users.find((u) => u.email === email);
+
+    if (userExists) {
+      alert("User already exists");
+
+      return;
+    }
+
+    const newUser = {
+      name,
+
+      email,
+
+      studentId,
+
+      password,
+
+      role,
+    };
+
+    users.push(newUser);
+
+    localStorage.setItem("users", JSON.stringify(users));
 
     alert("Registration Successful ✅");
+
+    setFormData({
+      name: "",
+
+      email: "",
+
+      studentId: "",
+
+      password: "",
+
+      role: "student",
+
+      adminKey: "",
+    });
 
     navigate("/login");
   };
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-[#020617]">
-      {/* Container */}
-
       <div className="flex flex-col items-center px-4 py-10">
-        {/* Header */}
-
         <div className="flex items-center gap-3 mb-8">
           <div
             className="w-10 h-10 flex items-center justify-center
-                          rounded-full border-2 border-blue-700"
+rounded-full border-2 border-blue-700"
           >
             <svg
               className="w-6 h-6 text-blue-700"
@@ -64,11 +106,9 @@ export default function Register() {
           <h1 className="text-2xl font-bold dark:text-white">Smart E-Voting</h1>
         </div>
 
-        {/* Card */}
-
         <div
           className="w-full max-w-md bg-white dark:bg-slate-900
-                        p-8 rounded-2xl shadow-md"
+p-8 rounded-2xl shadow-md"
         >
           <h2 className="text-2xl font-semibold dark:text-white">
             Create Account
@@ -78,78 +118,83 @@ export default function Register() {
             Register to participate in student elections
           </p>
 
-          {/* Name */}
-
           <label className="block mb-2 dark:text-gray-300">Full Name</label>
 
           <input
             type="text"
             name="name"
-            placeholder="John Doe"
+            value={formData.name}
             onChange={handleChange}
-            className="w-full p-3 mb-4 border rounded-lg
-                       dark:bg-slate-800 dark:text-white"
+            placeholder="John Doe"
+            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
           />
-
-          {/* Email */}
 
           <label className="block mb-2 dark:text-gray-300">Email Address</label>
 
           <input
             type="email"
             name="email"
-            placeholder="student@college.edu"
+            value={formData.email}
             onChange={handleChange}
-            className="w-full p-3 mb-4 border rounded-lg
-                       dark:bg-slate-800 dark:text-white"
+            placeholder="student@college.edu"
+            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
           />
-
-          {/* Student ID */}
 
           <label className="block mb-2 dark:text-gray-300">Student ID</label>
 
           <input
             type="text"
             name="studentId"
-            placeholder="STU2024001"
+            value={formData.studentId}
             onChange={handleChange}
-            className="w-full p-3 mb-4 border rounded-lg
-                       dark:bg-slate-800 dark:text-white"
+            placeholder="STU2024001"
+            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
           />
-
-          {/* Password */}
 
           <label className="block mb-2 dark:text-gray-300">Password</label>
 
           <input
             type="password"
             name="password"
-            placeholder="Create password"
+            value={formData.password}
             onChange={handleChange}
-            className="w-full p-3 mb-4 border rounded-lg
-                       dark:bg-slate-800 dark:text-white"
+            placeholder="Create password"
+            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
           />
-
-          {/* Role */}
 
           <label className="block mb-2 dark:text-gray-300">Register As</label>
 
           <select
             name="role"
+            value={formData.role}
             onChange={handleChange}
-            className="w-full p-3 mb-6 border rounded-lg
-                       dark:bg-slate-800 dark:text-white"
+            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
           >
-            <option>Student</option>
-            <option>Admin</option>
+            <option value="student">Student</option>
+
+            <option value="admin">Admin</option>
           </select>
 
-          {/* Button */}
+          {formData.role === "admin" && (
+            <>
+              <label className="block mb-2 dark:text-gray-300">
+                Admin Secret Key
+              </label>
+
+              <input
+                type="password"
+                name="adminKey"
+                value={formData.adminKey}
+                onChange={handleChange}
+                placeholder="Enter secret key"
+                className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
+              />
+            </>
+          )}
 
           <button
             onClick={handleRegister}
-            className="w-full bg-blue-800 hover:bg-blue-900
-                       text-white py-3 rounded-lg"
+            className="w-full bg-blue-800 hover:bg-blue-900 text-white py-3 rounded-lg"
           >
             Register
           </button>
