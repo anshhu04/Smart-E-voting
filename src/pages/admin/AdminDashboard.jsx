@@ -11,7 +11,13 @@ export default function AdminDashboard() {
 
   const [endTime, setEndTime] = useState("");
 
-  /* ---------------- LOAD ELECTIONS ---------------- */
+  const [selectedElectionId, setSelectedElectionId] = useState("");
+
+  const [candidateName, setCandidateName] = useState("");
+
+  const [candidates, setCandidates] = useState([]);
+
+  /* ---------------- LOAD ---------------- */
 
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem("elections")) || [];
@@ -19,31 +25,34 @@ export default function AdminDashboard() {
     setElections(stored);
   }, []);
 
+  /* ---------------- LOAD CANDIDATES ---------------- */
+
+  useEffect(() => {
+    if (!selectedElectionId) return;
+
+    const stored =
+      JSON.parse(localStorage.getItem("candidates_" + selectedElectionId)) ||
+      [];
+
+    setCandidates(stored);
+  }, [selectedElectionId]);
+
   /* ---------------- CREATE ELECTION ---------------- */
 
   const createElection = () => {
     if (!title || !startTime || !endTime) return alert("Fill all fields");
-
     const newElection = {
       id: Date.now(),
-
       title,
-
       startTime,
-
       endTime,
-
       votes: 0,
-
-      candidates: ["Candidate A", "Candidate B", "Candidate C", "Candidate D"],
+      candidates: [], // ✅ REQUIRED FIX
     };
 
     const updated = [...elections, newElection];
 
     localStorage.setItem("elections", JSON.stringify(updated));
-
-    /* 🔥 important for student dashboard sync */
-    window.dispatchEvent(new Event("storage"));
 
     setElections(updated);
 
@@ -53,37 +62,97 @@ export default function AdminDashboard() {
 
     setEndTime("");
 
-    alert("Election Created Successfully ✅");
+    alert("Election Created ✅");
   };
 
-  /* ---------------- STATUS FUNCTION ---------------- */
+  /* ---------------- ADD CANDIDATE ---------------- */
 
-  const getStatus = (election) => {
-    const now = new Date();
+  const addCandidate = () => {
+    if (!selectedElectionId || !candidateName)
+      return alert("Enter candidate name");
 
-    const start = new Date(election.startTime);
+    const key = "candidates_" + selectedElectionId;
 
-    const end = new Date(election.endTime);
+    const stored = JSON.parse(localStorage.getItem(key)) || [];
 
-    if (now < start) return "Upcoming";
+    const newCandidate = {
+      id: Date.now(),
 
-    if (now < end) return "Live";
+      name: candidateName,
 
-    return "Ended";
+      votes: 0,
+    };
+
+    const updated = [...stored, newCandidate];
+
+    localStorage.setItem(key, JSON.stringify(updated));
+
+    /* ✅ IMPORTANT INTEGRATION — SYNC WITH ELECTION */
+    const elections = JSON.parse(localStorage.getItem("elections")) || [];
+    const updatedElections = elections.map((e) => {
+      if (String(e.id) === String(selectedElectionId)) {
+        return {
+          ...e,
+          candidates: updated,
+        };
+      }
+      return e;
+    });
+    localStorage.setItem("elections", JSON.stringify(updatedElections));
+    setElections(updatedElections);
+    /* original state updates */
+    setCandidates(updated);
+    setCandidateName("");
+  };
+
+  /* ---------------- DELETE CANDIDATE ---------------- */
+
+  const deleteCandidate = (id) => {
+    const key = "candidates_" + selectedElectionId;
+
+    const updated = candidates.filter((c) => c.id !== id);
+
+    localStorage.setItem(key, JSON.stringify(updated));
+
+    /* ✅ IMPORTANT INTEGRATION — SYNC WITH ELECTION */ const elections =
+      JSON.parse(localStorage.getItem("elections")) || [];
+    const updatedElections = elections.map((e) => {
+      if (String(e.id) === String(selectedElectionId)) {
+        return { ...e, candidates: updated };
+      }
+      return e;
+    });
+    localStorage.setItem("elections", JSON.stringify(updatedElections));
+    setElections(updatedElections);
+    /* original state */
+
+    setCandidates(updated);
   };
 
   /* ---------------- DELETE ELECTION ---------------- */
 
   const deleteElection = (id) => {
-    if (!window.confirm("Delete this election?")) return;
+    if (!window.confirm("Delete election?")) return;
 
     const updated = elections.filter((e) => e.id !== id);
 
     localStorage.setItem("elections", JSON.stringify(updated));
 
-    window.dispatchEvent(new Event("storage"));
+    localStorage.removeItem("candidates_" + id);
 
     setElections(updated);
+  };
+
+  /* ---------------- STATUS ---------------- */
+
+  const getStatus = (election) => {
+    const now = new Date();
+
+    if (now < new Date(election.startTime)) return "Upcoming";
+
+    if (now < new Date(election.endTime)) return "Live";
+
+    return "Ended";
   };
 
   /* ---------------- STATS ---------------- */
@@ -100,9 +169,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-[#020617] p-6">
-      {/* Header */}
-
-      <h1 className="text-3xl font-bold dark:text-white mb-6">
+      <h1 className="text-3xl font-bold mb-6 dark:text-white">
         Admin Dashboard
       </h1>
 
@@ -123,12 +190,12 @@ export default function AdminDashboard() {
           Create Election
         </h2>
 
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex gap-4 flex-wrap">
           <input
-            placeholder="Election Title"
+            placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="border p-2 rounded w-full"
+            className="border p-2 rounded"
           />
 
           <input
@@ -154,25 +221,73 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Add Candidate */}
+
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow mb-8">
+        <h2 className="text-xl font-bold mb-4 dark:text-white">
+          Add Candidate
+        </h2>
+
+        <div className="flex gap-4 flex-wrap">
+          <select
+            onChange={(e) => setSelectedElectionId(e.target.value)}
+            className="border p-2 rounded"
+          >
+            <option>Select Election</option>
+
+            {elections.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.title}
+              </option>
+            ))}
+          </select>
+
+          <input
+            placeholder="Candidate name"
+            value={candidateName}
+            onChange={(e) => setCandidateName(e.target.value)}
+            className="border p-2 rounded"
+          />
+
+          <button
+            onClick={addCandidate}
+            className="bg-green-600 text-white px-6 py-2 rounded"
+          >
+            Add
+          </button>
+        </div>
+
+        {/* Candidate List */}
+
+        <div className="mt-4">
+          {candidates.map((c) => (
+            <div key={c.id} className="flex justify-between border p-2 mt-2">
+              {c.name}
+
+              <button
+                onClick={() => deleteCandidate(c.id)}
+                className="text-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Election Table */}
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl shadow p-6">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow">
         <h2 className="text-xl font-semibold mb-4 dark:text-white">
           All Elections
         </h2>
 
         <table className="w-full">
           <thead>
-            <tr className="text-gray-500">
-              <th>Election</th>
+            <tr>
+              <th>Title</th>
 
               <th>Status</th>
-
-              <th>Start</th>
-
-              <th>End</th>
-
-              <th>Votes</th>
 
               <th>Action</th>
             </tr>
@@ -180,28 +295,10 @@ export default function AdminDashboard() {
 
           <tbody>
             {elections.map((e) => (
-              <tr key={e.id} className="border-t">
-                <td className="py-3">{e.title}</td>
+              <tr key={e.id}>
+                <td>{e.title}</td>
 
-                <td
-                  className={`py-3 font-semibold
-
-                  ${
-                    getStatus(e) === "Live"
-                      ? "text-green-600"
-                      : getStatus(e) === "Upcoming"
-                        ? "text-yellow-500"
-                        : "text-red-500"
-                  }`}
-                >
-                  {getStatus(e)}
-                </td>
-
-                <td>{new Date(e.startTime).toLocaleString()}</td>
-
-                <td>{new Date(e.endTime).toLocaleString()}</td>
-
-                <td>{e.votes || 0}</td>
+                <td>{getStatus(e)}</td>
 
                 <td>
                   <button
@@ -220,12 +317,12 @@ export default function AdminDashboard() {
   );
 }
 
-/* ---------------- STAT CARD ---------------- */
+/* Stat Card */
 
 function StatCard({ title, value }) {
   return (
     <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow">
-      <p className="text-gray-500">{title}</p>
+      <p>{title}</p>
 
       <h3 className="text-3xl font-bold text-blue-700">{value}</h3>
     </div>

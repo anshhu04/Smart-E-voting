@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
@@ -10,7 +10,7 @@ import Register from "./pages/Register";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 
-// ✅ Student Panel Imports
+/* Student Panel */
 import StudentLayout from "./pages/student/StudentLayout";
 import StudentDashboard from "./pages/student/StudentDashboard1";
 import StudentElections from "./pages/student/StudentElections";
@@ -22,79 +22,133 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
 
-  const location = useLocation();
+const location = useLocation();
 
-  const hideNavbar =
-    location.pathname.startsWith("/login") ||
-    location.pathname.startsWith("/register") ||
-    location.pathname.startsWith("/admin") ||
-    location.pathname.startsWith("/student");
+const hideNavbar =
 
-  return (
-    <>
-      {!hideNavbar && <Navbar />}
-
-      <Routes>
-
-        {/* Landing Page */}
-
-        <Route
-          path="/"
-          element={
-            <>
-              <Hero />
-              <Services />
-              <Footer />
-            </>
-          }
-        />
-
-        {/* Auth */}
-
-        <Route path="/login" element={<Login />} />
-
-        <Route path="/register" element={<Register />} />
+location.pathname.startsWith("/login") ||
+location.pathname.startsWith("/register") ||
+location.pathname.startsWith("/admin") ||
+location.pathname.startsWith("/student");
 
 
-        {/* Admin Protected */}
+return (
 
-        <Route
-          path="/admin/dashboard"
-          element={
-            <ProtectedRoute role="admin">
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
+<>
 
+{!hideNavbar && <Navbar />}
 
-        {/* ✅ FULL STUDENT PANEL */}
+<Routes>
 
-        <Route
-          path="/student"
-          element={
-            <ProtectedRoute role="student">
-              <StudentLayout />
-            </ProtectedRoute>
-          }
-        >
+{/* Landing */}
 
-          <Route path="dashboard" element={<StudentDashboard />} />
+<Route
 
-          <Route path="elections" element={<StudentElections />} />
+path="/"
 
-          <Route path="vote/:id" element={<StudentVote />} />
+element={
 
-          <Route path="results" element={<StudentResults />} />
+<>
 
-          <Route path="profile" element={<StudentProfile />} />
+<Hero />
 
-        </Route>
+<Services />
+
+<Footer />
+
+</>
+
+}
+
+/>
 
 
-      </Routes>
-    </>
-  );
+{/* Auth */}
+
+<Route path="/login" element={<Login />} />
+
+<Route path="/register" element={<Register />} />
+
+
+{/* Admin */}
+
+<Route
+
+path="/admin/dashboard"
+
+element={
+
+<ProtectedRoute role="admin">
+
+<AdminDashboard />
+
+</ProtectedRoute>
+
+}
+
+/>
+
+
+{/* STUDENT PANEL */}
+
+<Route
+
+path="/student"
+
+element={
+
+<ProtectedRoute role="student">
+
+<StudentLayout />
+
+</ProtectedRoute>
+
+}
+
+>
+
+
+{/* ✅ default route */}
+
+<Route
+
+index
+
+element={<Navigate to="dashboard" />}
+
+/>
+
+
+<Route path="dashboard" element={<StudentDashboard />} />
+
+<Route path="elections" element={<StudentElections />} />
+
+<Route path="vote/:id" element={<StudentVote />} />
+
+<Route path="results" element={<StudentResults />} />
+
+<Route path="profile" element={<StudentProfile />} />
+
+
+</Route>
+
+
+{/* 404 fallback */}
+
+<Route
+
+path="*"
+
+element={<Navigate to="/" />}
+
+/>
+
+
+</Routes>
+
+</>
+
+);
 
 }
 
