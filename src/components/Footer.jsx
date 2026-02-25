@@ -34,7 +34,7 @@ export default function Footer() {
       </section>
 
       {/* Bottom Footer */}
-      <footer className="bg-slate-900 text-gray-400 dark:text-gray-200 py-6 text-center">
+      <footer className="bg-slate-900 text-gray-400 dark:text-gray-200 py-6 text-center dark:bg-[#0a0a0a]">
         <p>© 2026 Smart E-Voting System. Built for secure student elections.</p>
       </footer>
     </>

@@ -3,7 +3,7 @@ export default function Services() {
     <section className="bg-white dark:bg-[#0b1220] py-24">
       <div className="max-w-7xl mx-auto px-6 text-center">
         {/* Heading */}
-        <h2 className="text-4xl font-bold text-gray-900 dark:text-white">
+        <h2 className="text-4xl font-bold text-gray-900 dark:text-white ">
           Why Choose Smart E-Voting?
         </h2>
         <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
