@@ -10,19 +10,20 @@ const getPhotoSafe = (key) => {
 };
 const savePhotoSafe = (key, data) => {
   try { localStorage.setItem(key, data); return true; }
-  catch (e) { return false; }
+  catch (e) { return false; } // quota exceeded
 };
 
 export default function StudentProfile() {
   const navigate = useNavigate();
 
+  // Always read fresh user on each render trigger
   const [user, setUser] = useState(getUser);
   const elections = JSON.parse(localStorage.getItem("elections")) || [];
   const savedExtra = getSavedExtra(user?.studentId);
 
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("info");
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useState(null); // { msg, type }
 
   const [form, setForm] = useState({
     name:        user?.name        || "",
@@ -33,12 +34,14 @@ export default function StudentProfile() {
     batch:       savedExtra.batch       || "",
     passingYear: savedExtra.passingYear || "",
     program:     savedExtra.program     || "",
+    section:     savedExtra.section     || "",
     gender:      savedExtra.gender      || "",
     dob:         savedExtra.dob         || "",
     address:     savedExtra.address     || "",
     bio:         savedExtra.bio         || "",
   });
 
+  // Photos stored separately to avoid one big JSON blob hitting quota
   const [profilePhoto, setProfilePhoto] = useState(
     () => getPhotoSafe("photo_profile_" + user?.studentId)
   );
@@ -46,7 +49,7 @@ export default function StudentProfile() {
     () => getPhotoSafe("photo_cover_" + user?.studentId)
   );
   const [photoError, setPhotoError] = useState("");
-  const [lightbox, setLightbox] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // "profile" | "cover" | null
 
   const profilePhotoRef = useRef();
   const coverPhotoRef   = useRef();
@@ -58,6 +61,7 @@ export default function StudentProfile() {
   const initials = (form.name || "ST")
     .split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
+  // ── Show Toast ───────────────────────────────────────────────────────────
   const showToast = useCallback((msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
@@ -68,6 +72,7 @@ export default function StudentProfile() {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Warn if file too large (>1MB compressed is risky)
     if (file.size > 2 * 1024 * 1024) {
       setPhotoError("Image too large. Please use an image under 2MB.");
       return;
@@ -90,18 +95,19 @@ export default function StudentProfile() {
       else                    setCoverPhoto(data);
     };
     reader.readAsDataURL(file);
+    // Reset input so same file can be re-selected
     e.target.value = "";
   };
 
-  // ── Handle Photo Remove ──────────────────────────────────────────────────
-  const handlePhotoRemove = (type) => {
+  // ── Remove Photo ──────────────────────────────────────────────────────────
+  const handleRemovePhoto = (type) => {
     const key = type === "profile"
       ? "photo_profile_" + user?.studentId
       : "photo_cover_"   + user?.studentId;
-    localStorage.removeItem(key);
+    try { localStorage.removeItem(key); } catch {}
     if (type === "profile") setProfilePhoto(null);
     else                    setCoverPhoto(null);
-    showToast(`${type === "profile" ? "Profile" : "Cover"} photo removed.`);
+    showToast(type === "profile" ? "Profile photo removed" : "Cover photo removed");
   };
 
   const handleChange = (e) =>
@@ -110,9 +116,11 @@ export default function StudentProfile() {
   // ── Save ─────────────────────────────────────────────────────────────────
   const handleSave = () => {
     try {
+      // 1. Update loggedInUser
       const updatedUser = { ...user, name: form.name, email: form.email };
       localStorage.setItem("loggedInUser", JSON.stringify(updatedUser));
 
+      // 2. Update users array
       const users = JSON.parse(localStorage.getItem("users")) || [];
       const updatedUsers = users.map((u) =>
         u.studentId === user.studentId
@@ -121,6 +129,7 @@ export default function StudentProfile() {
       );
       localStorage.setItem("users", JSON.stringify(updatedUsers));
 
+      // 3. Save extra profile fields (WITHOUT photos — those are stored separately)
       const extra = {
         phone:       form.phone,
         department:  form.department,
@@ -132,10 +141,13 @@ export default function StudentProfile() {
         dob:         form.dob,
         address:     form.address,
         bio:         form.bio,
+        section:     form.section,
       };
       localStorage.setItem("profile_extra_" + user.studentId, JSON.stringify(extra));
 
+      // 4. Refresh local user state so name updates instantly in UI
       setUser(updatedUser);
+
       setEditing(false);
       showToast("Profile saved successfully!");
     } catch (err) {
@@ -153,7 +165,7 @@ export default function StudentProfile() {
   // ── Profile Completion ────────────────────────────────────────────────────
   const completionFields = [
     form.phone, form.department, form.semester, form.batch,
-    form.passingYear, form.program, form.gender, form.dob,
+    form.passingYear, form.program, form.gender, form.dob, form.section,
     form.bio, profilePhoto,
   ];
   const completionPct = Math.round(
@@ -165,6 +177,7 @@ export default function StudentProfile() {
   const currentYear  = new Date().getFullYear();
   const passingYears = Array.from({ length: 8 }, (_, i) => currentYear + i - 2);
 
+  // ── Shared Save/Cancel buttons ────────────────────────────────────────────
   const EditActions = () => editing ? (
     <div className="flex gap-3 pt-2 border-t border-gray-100 dark:border-slate-700 mt-4">
       <button
@@ -182,6 +195,7 @@ export default function StudentProfile() {
     </div>
   ) : null;
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-3xl mx-auto space-y-5 pb-10">
 
@@ -201,47 +215,39 @@ export default function StudentProfile() {
       {/* ── Cover + Profile Photo ── */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
 
-        {/* Cover — dynamic height: min 120px, grows with content via aspect ratio when photo present */}
-        <div
-          className={`relative w-full bg-gradient-to-br from-blue-900 via-blue-700 to-blue-500 dark:from-[#0b132b] dark:to-[#1c2541] ${coverPhoto ? "" : "h-36"}`}
-          style={coverPhoto ? { aspectRatio: "3 / 1", minHeight: "120px" } : {}}
-        >
+        {/* Cover */}
+        <div className="relative h-40 bg-gradient-to-br from-blue-900 via-blue-700 to-blue-500 dark:from-[#0b132b] dark:to-[#1c2541]">
           {coverPhoto && (
             <img
               src={coverPhoto}
               alt="Cover"
-              className="absolute inset-0 w-full h-full object-cover cursor-zoom-in"
+              className="w-full h-full object-cover cursor-zoom-in"
               onClick={() => setLightbox("cover")}
               title="Click to zoom"
             />
           )}
-
-          {/* Cover photo action buttons */}
-          <div className="absolute top-3 right-3 flex gap-2">
-            {coverPhoto && (
-              <button
-                onClick={() => handlePhotoRemove("cover")}
-                className="flex items-center gap-1.5 bg-black/50 hover:bg-red-600/80 text-white text-xs font-semibold px-3 py-1.5 rounded-lg backdrop-blur-sm transition"
-                title="Remove cover photo"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-                Remove
-              </button>
-            )}
+          <button
+            onClick={() => coverPhotoRef.current.click()}
+            className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/40 hover:bg-black/60 text-white text-xs font-semibold px-3 py-1.5 rounded-lg backdrop-blur-sm transition"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Change Cover
+          </button>
+          {coverPhoto && (
             <button
-              onClick={() => coverPhotoRef.current.click()}
-              className="flex items-center gap-1.5 bg-black/40 hover:bg-black/60 text-white text-xs font-semibold px-3 py-1.5 rounded-lg backdrop-blur-sm transition"
+              onClick={() => handleRemovePhoto("cover")}
+              className="absolute top-3 left-3 flex items-center gap-1.5 bg-red-600/80 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg backdrop-blur-sm transition"
+              title="Remove cover photo"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
               </svg>
-              {coverPhoto ? "Change Cover" : "Add Cover"}
+              Remove
             </button>
-          </div>
-
+          )}
           <input ref={coverPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoUpload(e, "cover")} />
         </div>
 
@@ -249,7 +255,8 @@ export default function StudentProfile() {
         <div className="px-6 pb-5">
           <div className="flex items-end justify-between -mt-12 mb-4">
             {/* Avatar */}
-            <div className="relative">
+            <div className="relative group">
+              {/* Avatar circle */}
               <div
                 className="w-24 h-24 rounded-full border-4 border-white dark:border-slate-900 overflow-hidden bg-blue-700 flex items-center justify-center shadow-md cursor-zoom-in"
                 onClick={() => setLightbox("profile")}
@@ -260,64 +267,58 @@ export default function StudentProfile() {
                   : <span className="text-white font-bold text-3xl">{initials}</span>
                 }
               </div>
-
-              {/* Profile photo action: change button always visible */}
+              {/* Camera icon to change photo */}
               <button
                 onClick={() => profilePhotoRef.current.click()}
                 className="absolute bottom-1 right-1 w-7 h-7 bg-blue-700 hover:bg-blue-800 rounded-full flex items-center justify-center shadow border-2 border-white dark:border-slate-900 transition"
-                title={profilePhoto ? "Change profile photo" : "Add profile photo"}
+                title="Change profile photo"
               >
                 <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
               </button>
-
               <input ref={profilePhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoUpload(e, "profile")} />
             </div>
 
-            {/* Edit / Save / Cancel + Remove Profile Photo */}
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex gap-2">
-                {editing ? (
-                  <>
-                    <button
-                      onClick={handleCancel}
-                      className="px-4 py-1.5 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      className="px-4 py-1.5 rounded-xl bg-blue-800 hover:bg-blue-900 active:scale-95 text-white text-sm font-semibold transition shadow-md"
-                    >
-                      Save Changes
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="flex items-center gap-2 px-4 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/30 transition"
-                  >
-                    <svg className="w-4 h-4 " fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                    </svg>
-                    Edit Profile
-                  </button>
-                )}
-              </div>
-
-              {/* Remove profile photo button — only shown when photo exists */}
-              {profilePhoto && (
+            {/* Edit / Save / Cancel */}
+            <div className="flex items-center gap-2">
+              {/* Remove profile pic button — only shown when photo exists and not editing */}
+              {profilePhoto && !editing && (
                 <button
-                  onClick={() => handlePhotoRemove("profile")}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 dark:hover:text-red-400 transition"
-                  title="Remove profile photo"
+                  onClick={() => handleRemovePhoto("profile")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 transition"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                   </svg>
-                  Remove photo
+                  Remove Photo
+                </button>
+              )}
+              {editing ? (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    className="px-4 py-1.5 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    className="px-4 py-1.5 rounded-xl bg-blue-800 hover:bg-blue-900 active:scale-95 text-white text-sm font-semibold transition shadow-md"
+                  >
+                    Save Changes
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="flex items-center gap-2 px-4 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/30 transition"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                  Edit Profile
                 </button>
               )}
             </div>
@@ -337,30 +338,33 @@ export default function StudentProfile() {
               {form.department && <Tag color="purple">{form.department}</Tag>}
               {form.semester   && <Tag color="green">{form.semester} Semester</Tag>}
               {form.batch      && <Tag color="orange">Batch {form.batch}</Tag>}
+              {form.section    && <Tag color="teal">Section {form.section}</Tag>}
             </div>
             {form.bio && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 leading-relaxed">{form.bio}</p>
             )}
           </div>
 
-          {/* Completion bar — hidden when 100% */}
-          {completionPct < 100 && (
-            <div className="mt-4">
-              <div className="flex justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
-                <span>Profile Completion</span>
-                <span className="text-blue-600">{completionPct}%</span>
-              </div>
-              <div className="h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700 bg-blue-600"
-                  style={{ width: `${completionPct}%` }}
-                />
-              </div>
+          {/* Completion bar */}
+          <div className="mt-4">
+            <div className="flex justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+              <span>Profile Completion</span>
+              <span className={completionPct === 100 ? "text-green-600" : "text-blue-600"}>
+                {completionPct}%
+              </span>
+            </div>
+            <div className="h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${completionPct === 100 ? "bg-green-500" : "bg-blue-600"}`}
+                style={{ width: `${completionPct}%` }}
+              />
+            </div>
+            {completionPct < 100 && (
               <p className="text-xs text-gray-400 mt-1">
                 Fill in all fields to reach 100% — click <strong>Edit Profile</strong> to get started.
               </p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -412,6 +416,7 @@ export default function StudentProfile() {
             }
           </div>
 
+          {/* Student ID readonly */}
           <div className="flex items-center justify-between bg-gray-50 dark:bg-slate-800 rounded-xl px-4 py-3">
             <div>
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Student ID</p>
@@ -442,6 +447,7 @@ export default function StudentProfile() {
               options={semesters} placeholder="Select semester"
             />
             <Field label="Batch / Admission Year" name="batch" value={form.batch} editing={editing} onChange={handleChange} placeholder="e.g. 2022" type="number" />
+            <Field label="Section" name="section" value={form.section} editing={editing} onChange={handleChange} placeholder="e.g. A, B, C1" />
             <SelectField
               label="Expected Passing Year" name="passingYear" value={form.passingYear}
               editing={editing} onChange={handleChange}
@@ -456,6 +462,7 @@ export default function StudentProfile() {
             </div>
           </div>
 
+          {/* Summary cards when not editing */}
           {!editing && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
               {[
@@ -464,6 +471,7 @@ export default function StudentProfile() {
                 { label: "Semester",      value: form.semester ? `${form.semester} Sem` : "", color: "green"  },
                 { label: "Batch",         value: form.batch,                    color: "orange" },
                 { label: "Passing Year",  value: form.passingYear,              color: "red"    },
+                { label: "Section",       value: form.section ? `Section ${form.section}` : "", color: "teal"   },
               ].filter((i) => i.value).map((item, i) => (
                 <SummaryCard key={i} label={item.label} value={item.value} color={item.color} />
               ))}
@@ -538,6 +546,7 @@ export default function StudentProfile() {
           onClick={() => setLightbox(null)}
         >
           <div className="relative max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+            {/* Close button */}
             <button
               onClick={() => setLightbox(null)}
               className="absolute -top-10 right-0 text-white/80 hover:text-white flex items-center gap-1.5 text-sm font-semibold transition"
@@ -643,6 +652,7 @@ function Tag({ color, children }) {
     purple: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400",
     green:  "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400",
     orange: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400",
+    teal:   "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400",
   };
   return (
     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colors[color] || colors.blue}`}>
@@ -658,6 +668,7 @@ function SummaryCard({ label, value, color, center = false }) {
     green:  "bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-700 dark:text-green-400",
     orange: "bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-700 dark:text-orange-400",
     red:    "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800 text-red-700 dark:text-red-400",
+    teal:   "bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800 text-teal-700 dark:text-teal-400",
   };
   return (
     <div className={`rounded-xl p-3 border ${center ? "text-center" : ""} ${colors[color] || colors.blue}`}>

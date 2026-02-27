@@ -11,8 +11,9 @@ function isEligible(election, userExtra) {
   const matchSem     = !semesters?.length   || semesters.includes(userExtra.semester);
   const matchBatch   = !batches?.length     || batches.includes(userExtra.batch);
   const matchProgram = !programs?.length    || programs.includes(userExtra.program);
+  const matchSection = !el.sections?.length || el.sections.includes(userExtra.section);
 
-  return matchDept && matchSem && matchBatch && matchProgram;
+  return matchDept && matchSem && matchBatch && matchProgram && matchSection;
 }
 
 export default function StudentResults() {

@@ -16,6 +16,7 @@ export default function StudentElections() {
   const allElections = JSON.parse(localStorage.getItem("elections")) || [];
   const user         = JSON.parse(localStorage.getItem("loggedInUser"));
   const userExtra    = JSON.parse(localStorage.getItem("profile_extra_" + user?.studentId)) || {};
+  // userExtra includes: department, semester, batch, program, section
   const navigate     = useNavigate();
   const now          = new Date();
 

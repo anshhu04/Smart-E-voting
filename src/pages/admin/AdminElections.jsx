@@ -12,6 +12,7 @@ const ELECTION_TYPES = [
 ];
 
 const SEMESTERS  = ["1st","2nd","3rd","4th","5th","6th","7th","8th"];
+const SECTIONS   = ["A","B","C","D","E"];
 const PROGRAMS   = ["B.Tech","B.Sc","B.Com","BBA","BCA","M.Tech","M.Sc","MBA","MCA","PhD"];
 const DEPARTMENTS = ["Computer Science","Electronics","Mechanical","Civil","Electrical","Information Technology","Chemical","Biotechnology","MBA","MCA"];
 const currentYear = new Date().getFullYear();
@@ -20,7 +21,7 @@ const BATCHES    = Array.from({ length: 6 }, (_, i) => String(currentYear - 5 + 
 const emptyForm = {
   title: "", type: "", startTime: "", endTime: "",
   scope: "all",
-  departments: [], semesters: [], batches: [], programs: [],
+  departments: [], semesters: [], batches: [], programs: [], sections: [],
 };
 
 export default function AdminElections() {
@@ -44,7 +45,7 @@ export default function AdminElections() {
 
   const handleTypeChange = (typeVal) => {
     const found = ELECTION_TYPES.find((t) => t.value === typeVal);
-    setForm((f) => ({ ...f, type: typeVal, scope: found?.scope || "all", departments: [], semesters: [], batches: [], programs: [] }));
+    setForm((f) => ({ ...f, type: typeVal, scope: found?.scope || "all", departments: [], semesters: [], batches: [], programs: [], sections: [] }));
   };
 
   const toggleArr = (key, val) => {
@@ -66,6 +67,7 @@ export default function AdminElections() {
       semesters:   form.semesters,
       batches:     form.batches,
       programs:    form.programs,
+      sections:    form.sections,
     };
 
     const newElection = {
@@ -104,25 +106,93 @@ export default function AdminElections() {
     if (e.eligibility.semesters?.length)   parts.push(e.eligibility.semesters.map((s) => s + " Sem").join(", "));
     if (e.eligibility.batches?.length)     parts.push("Batch: " + e.eligibility.batches.join(", "));
     if (e.eligibility.programs?.length)    parts.push(e.eligibility.programs.join(", "));
+    if (e.eligibility.sections?.length)     parts.push("Sec: " + e.eligibility.sections.join(", "));
     return parts.join(" · ") || "All Students";
   };
 
-  const FilterChips = ({ label, items, field }) => (
-    <div>
-      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {items.map((item) => (
-          <button key={item} onClick={() => toggleArr(field, item)}
-            className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition
-              ${form[field].includes(item)
-                ? "bg-blue-700 text-white border-blue-700"
-                : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-blue-400"}`}>
-            {item}
+  // Custom items state per field
+  const [customInputs, setCustomInputs] = useState({
+    departments: "", semesters: "", batches: "", programs: "", sections: "",
+  });
+  const [showCustomInput, setShowCustomInput] = useState({
+    departments: false, semesters: false, batches: false, programs: false, sections: false,
+  });
+  const [customItems, setCustomItems] = useState({
+    departments: [], semesters: [], batches: [], programs: [], sections: [],
+  });
+
+  const addCustomItem = (field) => {
+    const val = customInputs[field].trim();
+    if (!val) return;
+    const allItems = [...(field === "departments" ? DEPARTMENTS : field === "semesters" ? SEMESTERS : field === "batches" ? BATCHES : field === "programs" ? PROGRAMS : SECTIONS), ...customItems[field]];
+    if (allItems.includes(val)) {
+      // just select it
+      if (!form[field].includes(val)) toggleArr(field, val);
+    } else {
+      setCustomItems((prev) => ({ ...prev, [field]: [...prev[field], val] }));
+      if (!form[field].includes(val)) toggleArr(field, val);
+    }
+    setCustomInputs((prev) => ({ ...prev, [field]: "" }));
+    setShowCustomInput((prev) => ({ ...prev, [field]: false }));
+  };
+
+  const FilterChips = ({ label, items, field }) => {
+    const extra = customItems[field] || [];
+    const allItems = [...items, ...extra];
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
+          <button
+            onClick={() => setShowCustomInput((prev) => ({ ...prev, [field]: !prev[field] }))}
+            className="flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+            Add Custom
           </button>
-        ))}
+        </div>
+        {showCustomInput[field] && (
+          <div className="flex gap-2 mb-2">
+            <input
+              value={customInputs[field]}
+              onChange={(e) => setCustomInputs((prev) => ({ ...prev, [field]: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && addCustomItem(field)}
+              placeholder={`Type custom ${label.toLowerCase().replace("(s)","")}...`}
+              className="flex-1 text-xs p-2 border border-blue-300 dark:border-blue-700 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+              autoFocus
+            />
+            <button onClick={() => addCustomItem(field)}
+              className="px-3 py-1.5 bg-blue-700 text-white text-xs font-semibold rounded-lg hover:bg-blue-800 transition">
+              Add
+            </button>
+            <button onClick={() => setShowCustomInput((prev) => ({ ...prev, [field]: false }))}
+              className="px-3 py-1.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition">
+              Cancel
+            </button>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {allItems.map((item) => (
+            <button key={item} onClick={() => toggleArr(field, item)}
+              className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition
+                ${form[field].includes(item)
+                  ? "bg-blue-700 text-white border-blue-700"
+                  : extra.includes(item)
+                  ? "bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700 hover:border-purple-500"
+                  : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-blue-400"}`}>
+              {extra.includes(item) && !form[field].includes(item) && <span className="mr-1 text-purple-400">✦</span>}
+              {item}
+            </button>
+          ))}
+        </div>
+        {form[field].length > 0 && (
+          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5 font-medium">
+            Selected: {form[field].join(", ")}
+          </p>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const statusBadge = (status) => {
     if (status === "Live")     return <span className="flex items-center gap-1 text-xs font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2.5 py-1 rounded-full"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"/>Live</span>;
@@ -244,7 +314,8 @@ export default function AdminElections() {
                   <FilterChips label="Semester(s)"   items={SEMESTERS}   field="semesters" />
                   <FilterChips label="Batch / Year"  items={BATCHES}     field="batches" />
                   <FilterChips label="Program(s)"    items={PROGRAMS}    field="programs" />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 italic">Leave a category empty to match all values in that category.</p>
+                  <FilterChips label="Section(s)"    items={SECTIONS}    field="sections" />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 italic">Leave a category empty to match all values in that category. ✦ Purple chips are custom-added.</p>
                 </div>
               )}
             </div>
