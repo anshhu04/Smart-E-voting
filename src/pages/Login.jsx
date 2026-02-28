@@ -19,9 +19,13 @@ export default function Login() {
     try {
       const data = await authAPI.login(form);
 
-      // Save token + user to localStorage
+      // Strip photos before storing in localStorage — base64 too large for quota
+      // Photos are stored separately under photo_profile_xxx / photo_cover_xxx keys
+      const userForStorage = { ...data.user, profilePhoto: "", coverPhoto: "" };
+
       setToken(data.token);
-      setUser(data.user);
+      setUser(userForStorage);
+      localStorage.setItem("loggedInUser", JSON.stringify(userForStorage));
 
       // Redirect based on role
       if (data.user.role === "admin") navigate("/admin/dashboard");
@@ -65,7 +69,10 @@ export default function Login() {
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Password</label>
+              <Link to="/forgot-password" className="text-xs text-blue-700 dark:text-blue-400 font-medium hover:underline">Forgot password?</Link>
+            </div>
             <input
               type="password" name="password" value={form.password} onChange={handleChange}
               placeholder="••••••••" required

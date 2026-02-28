@@ -5,8 +5,10 @@ import Hero     from "./components/Hero";
 import Services from "./components/Services";
 import Footer   from "./components/Footer";
 
-import Login    from "./pages/Login";
-import Register from "./pages/Register";
+import Login         from "./pages/Login";
+import Register      from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword  from "./pages/ResetPassword";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -32,6 +34,8 @@ function App() {
   const hideNavbar =
     location.pathname.startsWith("/login")    ||
     location.pathname.startsWith("/register") ||
+    location.pathname.startsWith("/forgot-password") ||
+    location.pathname.startsWith("/reset-password")  ||
     location.pathname.startsWith("/admin")    ||
     location.pathname.startsWith("/student");
 
@@ -53,8 +57,10 @@ function App() {
         />
 
         {/* ── Auth ── */}
-        <Route path="/login"    element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login"          element={<Login />} />
+        <Route path="/register"       element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* ── Admin Panel ── */}
         <Route

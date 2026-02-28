@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { authAPI } from "../services/api";
+import { authAPI, setToken, setUser } from "../services/api";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -19,11 +19,17 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await authAPI.register(form);
-      // After successful registration, send the user to login.
-      navigate("/login");
+      const data = await authAPI.register(form);
+      // Strip photos before storing in localStorage — base64 too large for quota
+      const userForStorage = { ...data.user, profilePhoto: "", coverPhoto: "" };
+      setToken(data.token);
+      setUser(userForStorage);
+      localStorage.setItem("loggedInUser", JSON.stringify(userForStorage));
+
+      if (data.user.role === "admin") navigate("/admin/dashboard");
+      else                            navigate("/student/dashboard");
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Registration failed.");
+      setError(err.message || "Registration failed.");
     } finally {
       setLoading(false);
     }
@@ -49,31 +55,26 @@ export default function Register() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Full Name</label>
-            <input type="text" name="name" value={form.name} onChange={handleChange} required
+            <input type="text" name="name" value={form.name} onChange={handleChange} placeholder="Your full name" required
               className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
           </div>
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Email Address</label>
-            <input type="email" name="email" value={form.email} onChange={handleChange} required
+            <input type="email" name="email" value={form.email} onChange={handleChange} placeholder="you@email.com" required
               className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
           </div>
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Student ID</label>
-            <input type="text" name="studentId" value={form.studentId} onChange={handleChange} required
+            <input type="text" name="studentId" value={form.studentId} onChange={handleChange} placeholder="e.g. 2330054" required
               className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
           </div>
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
-            <input type="password" name="password" value={form.password} onChange={handleChange} required
+            <input type="password" name="password" value={form.password} onChange={handleChange} placeholder="Min 6 characters" required
               className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
           </div>
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Role</label>
             <select name="role" value={form.role} onChange={handleChange}
@@ -82,18 +83,11 @@ export default function Register() {
               <option value="admin">Admin</option>
             </select>
           </div>
-
           {form.role === "admin" && (
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Admin Secret Key</label>
-              <input
-                type="password"
-                name="adminKey"
-                value={form.adminKey}
-                onChange={handleChange}
-                required
-                className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
-              />
+              <input type="password" name="adminKey" value={form.adminKey} onChange={handleChange} placeholder="Enter admin secret key"
+                className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
             </div>
           )}
 
@@ -101,16 +95,12 @@ export default function Register() {
             className="w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-900 text-white font-bold transition disabled:opacity-60 disabled:cursor-not-allowed">
             {loading ? "Creating account..." : "Create Account"}
           </button>
-
         </form>
 
         <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
           Already have an account?{" "}
-          <Link to="/login" className="text-blue-700 dark:text-blue-400 font-semibold hover:underline">
-            Sign in
-          </Link>
+          <Link to="/login" className="text-blue-700 dark:text-blue-400 font-semibold hover:underline">Sign in</Link>
         </p>
-
       </div>
     </div>
   );
