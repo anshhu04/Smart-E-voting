@@ -1,211 +1,116 @@
-import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { authAPI } from "../services/api";
 
 export default function Register() {
   const navigate = useNavigate();
-
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    studentId: "",
-    password: "",
-    role: "student",
-    adminKey: "",
+  const [form, setForm] = useState({
+    name: "", email: "", studentId: "", password: "", role: "student", adminKey: "",
   });
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
+  const handleChange = (e) =>
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const handleRegister = () => {
-    const { name, email, studentId, password, role, adminKey } = formData;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
-    if (!name || !email || !studentId || !password) {
-      alert("Please fill all fields");
-
-      return;
+    try {
+      await authAPI.register(form);
+      // After successful registration, send the user to login.
+      navigate("/login");
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Registration failed.");
+    } finally {
+      setLoading(false);
     }
-
-    if (role === "admin" && adminKey !== "ADMIN123") {
-      alert("Invalid Admin Secret Key ❌");
-
-      return;
-    }
-
-    const users = JSON.parse(localStorage.getItem("users")) || [];
-
-    const userExists = users.find((u) => u.email === email);
-
-    if (userExists) {
-      alert("User already exists");
-
-      return;
-    }
-
-    const newUser = {
-      name,
-
-      email,
-
-      studentId,
-
-      password,
-
-      role,
-    };
-
-    users.push(newUser);
-
-    localStorage.setItem("users", JSON.stringify(users));
-
-    alert("Registration Successful ✅");
-
-    setFormData({
-      name: "",
-
-      email: "",
-
-      studentId: "",
-
-      password: "",
-
-      role: "student",
-
-      adminKey: "",
-    });
-
-    navigate("/login");
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-[#020617]">
-      <div className="flex flex-col items-center px-4 py-10">
-        <div className="flex items-center gap-3 mb-8">
-          <div
-            className="w-10 h-10 flex items-center justify-center
-rounded-full border-2 border-blue-700"
-          >
-            <svg
-              className="w-6 h-6 text-blue-700"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-[#020617] p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-8 w-full max-w-md">
 
-          <h1 className="text-2xl font-bold dark:text-white">Smart E-Voting</h1>
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 rounded-full border-2 border-blue-700 dark:border-blue-400 flex items-center justify-center mx-auto mb-3">
+            <svg className="w-6 h-6 text-blue-700 dark:text-blue-400" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Account</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Join Smart E-Voting</p>
         </div>
 
-        <div
-          className="w-full max-w-md bg-white dark:bg-slate-900
-p-8 rounded-2xl shadow-md"
-        >
-          <h2 className="text-2xl font-semibold dark:text-white">
-            Create Account
-          </h2>
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-5 text-sm font-medium">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+            {error}
+          </div>
+        )}
 
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
-            Register to participate in student elections
-          </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
 
-          <label className="block mb-2 dark:text-gray-300">Full Name</label>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Full Name</label>
+            <input type="text" name="name" value={form.name} onChange={handleChange} required
+              className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
+          </div>
 
-          <input
-            type="text"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            placeholder="John Doe"
-            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
-          />
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Email Address</label>
+            <input type="email" name="email" value={form.email} onChange={handleChange} required
+              className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
+          </div>
 
-          <label className="block mb-2 dark:text-gray-300">Email Address</label>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Student ID</label>
+            <input type="text" name="studentId" value={form.studentId} onChange={handleChange} required
+              className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
+          </div>
 
-          <input
-            type="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            placeholder="student@college.edu"
-            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
-          />
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
+            <input type="password" name="password" value={form.password} onChange={handleChange} required
+              className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition" />
+          </div>
 
-          <label className="block mb-2 dark:text-gray-300">Student ID</label>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Role</label>
+            <select name="role" value={form.role} onChange={handleChange}
+              className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition">
+              <option value="student">Student</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
 
-          <input
-            type="text"
-            name="studentId"
-            value={formData.studentId}
-            onChange={handleChange}
-            placeholder="STU2024001"
-            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
-          />
-
-          <label className="block mb-2 dark:text-gray-300">Password</label>
-
-          <input
-            type="password"
-            name="password"
-            value={formData.password}
-            onChange={handleChange}
-            placeholder="Create password"
-            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
-          />
-
-          <label className="block mb-2 dark:text-gray-300">Register As</label>
-
-          <select
-            name="role"
-            value={formData.role}
-            onChange={handleChange}
-            className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
-          >
-            <option value="student">Student</option>
-
-            <option value="admin">Admin</option>
-          </select>
-
-          {formData.role === "admin" && (
-            <>
-              <label className="block mb-2 dark:text-gray-300">
-                Admin Secret Key
-              </label>
-
+          {form.role === "admin" && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Admin Secret Key</label>
               <input
                 type="password"
                 name="adminKey"
-                value={formData.adminKey}
+                value={form.adminKey}
                 onChange={handleChange}
-                placeholder="Enter secret key"
-                className="w-full p-3 mb-4 border rounded-lg dark:bg-slate-800 dark:text-white"
+                required
+                className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
               />
-            </>
+            </div>
           )}
 
-          <button
-            onClick={handleRegister}
-            className="w-full bg-blue-800 hover:bg-blue-900 text-white py-3 rounded-lg"
-          >
-            Register
+          <button type="submit" disabled={loading}
+            className="w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-900 text-white font-bold transition disabled:opacity-60 disabled:cursor-not-allowed">
+            {loading ? "Creating account..." : "Create Account"}
           </button>
 
-          <p className="mt-4 text-center text-gray-500 dark:text-gray-400">
-            Already have account?
-            <Link to="/login" className="text-blue-700 ml-1">
-              Login
-            </Link>
-          </p>
-        </div>
+        </form>
+
+        <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+          Already have an account?{" "}
+          <Link to="/login" className="text-blue-700 dark:text-blue-400 font-semibold hover:underline">
+            Sign in
+          </Link>
+        </p>
+
       </div>
     </div>
   );

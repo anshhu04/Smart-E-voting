@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { electionsAPI } from "../../services/api";
 
 export default function AdminCandidates() {
-  const [elections, setElections] = useState(() => JSON.parse(localStorage.getItem("elections")) || []);
+  const [elections, setElections] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState("");
   const [candidateName, setCandidateName] = useState("");
   const [candidateDesc, setCandidateDesc] = useState("");
@@ -12,55 +14,68 @@ export default function AdminCandidates() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const selectedElection = elections.find((e) => String(e.id) === String(selectedId));
+  const selectedElection = elections.find((e) => String(e._id) === String(selectedId));
   const candidates = selectedElection?.candidates || [];
 
-  const addCandidate = () => {
-    if (!selectedId)              return showToast("Select an election first", "error");
-    if (!candidateName.trim())    return showToast("Enter a candidate name", "error");
+  useEffect(() => {
+    async function fetchElections() {
+      setLoading(true);
+      try {
+        const data = await electionsAPI.getAll();
+        setElections(Array.isArray(data) ? data : []);
+      } catch (err) {
+        showToast(err.message || "Failed to load elections", "error");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchElections();
+  }, []);
+
+  const addCandidate = async () => {
+    if (!selectedId) return showToast("Select an election first", "error");
+    if (!candidateName.trim()) return showToast("Enter a candidate name", "error");
     const dup = candidates.find((c) => c.name.toLowerCase() === candidateName.trim().toLowerCase());
-    if (dup)                      return showToast("Candidate already exists", "error");
+    if (dup) return showToast("Candidate already exists", "error");
 
-    const newCandidate = { id: Date.now(), name: candidateName.trim(), description: candidateDesc.trim(), votes: 0 };
-    const updated = elections.map((e) =>
-      String(e.id) === String(selectedId)
-        ? { ...e, candidates: [...(e.candidates || []), newCandidate] }
-        : e
-    );
-    localStorage.setItem("elections", JSON.stringify(updated));
-    // Also update legacy candidates_ key
-    const updatedEl = updated.find((e) => String(e.id) === String(selectedId));
-    localStorage.setItem("candidates_" + selectedId, JSON.stringify(updatedEl.candidates));
-
-    setElections(updated);
-    setCandidateName("");
-    setCandidateDesc("");
-    showToast(`${newCandidate.name} added!`);
+    try {
+      const updated = await electionsAPI.addCandidate(selectedId, {
+        name: candidateName.trim(),
+        description: candidateDesc.trim() || "",
+      });
+      setElections((prev) =>
+        prev.map((e) => (e._id === selectedId ? updated : e))
+      );
+      setCandidateName("");
+      setCandidateDesc("");
+      showToast("Candidate added!");
+    } catch (err) {
+      showToast(err.message || "Failed to add candidate", "error");
+    }
   };
 
-  const deleteCandidate = (candidateId) => {
-    const updated = elections.map((e) =>
-      String(e.id) === String(selectedId)
-        ? { ...e, candidates: e.candidates.filter((c) => c.id !== candidateId) }
-        : e
-    );
-    localStorage.setItem("elections", JSON.stringify(updated));
-    const updatedEl = updated.find((e) => String(e.id) === String(selectedId));
-    localStorage.setItem("candidates_" + selectedId, JSON.stringify(updatedEl.candidates));
-    setElections(updated);
-    showToast("Candidate removed");
+  const deleteCandidate = async (candidateId) => {
+    if (!selectedId) return;
+    try {
+      const updated = await electionsAPI.deleteCandidate(selectedId, candidateId);
+      setElections((prev) =>
+        prev.map((e) => (e._id === selectedId ? updated : e))
+      );
+      showToast("Candidate removed");
+    } catch (err) {
+      showToast(err.message || "Failed to remove candidate", "error");
+    }
   };
 
   const now = new Date();
   const getStatus = (e) => {
     if (now < new Date(e.startTime)) return "Upcoming";
-    if (now < new Date(e.endTime))   return "Live";
+    if (now < new Date(e.endTime)) return "Live";
     return "Ended";
   };
 
   return (
     <div className="space-y-6">
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-sm font-semibold ${toast.type === "error" ? "bg-red-600 text-white" : "bg-green-600 text-white"}`}>
           {toast.type === "error"
@@ -75,18 +90,17 @@ export default function AdminCandidates() {
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Add and manage candidates for each election</p>
       </div>
 
-      {/* Select election + Add form */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-6 space-y-4">
         <h2 className="font-bold text-gray-900 dark:text-white">Add Candidate</h2>
 
-        {/* Election selector */}
         <div>
           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Select Election</label>
           <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
-            className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition">
+            className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
+            disabled={loading}>
             <option value="">-- Choose an election --</option>
             {elections.map((e) => (
-              <option key={e.id} value={e.id}>
+              <option key={e._id} value={e._id}>
                 {e.title} [{getStatus(e)}]
               </option>
             ))}
@@ -95,12 +109,11 @@ export default function AdminCandidates() {
 
         {selectedElection && (
           <>
-            {/* Eligibility reminder */}
             <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3">
               <svg className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z"/></svg>
               <p className="text-xs text-blue-800 dark:text-blue-300 font-medium">
                 <span className="font-bold">Eligibility: </span>
-                {selectedElection.eligibility?.scope === "all" ? "All students can vote in this election." : `Targeted — only matching students will see this election.`}
+                {selectedElection.eligibility?.scope === "all" ? "All students can vote in this election." : "Targeted — only matching students will see this election."}
               </p>
             </div>
 
@@ -128,7 +141,6 @@ export default function AdminCandidates() {
         )}
       </div>
 
-      {/* Candidates list */}
       {selectedElection && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
@@ -147,8 +159,8 @@ export default function AdminCandidates() {
             </div>
           ) : (
             <div className="space-y-3">
-              {candidates.map((c, i) => (
-                <div key={c.id} className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700">
+              {candidates.map((c) => (
+                <div key={c._id} className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-800 dark:text-blue-300 font-bold text-sm flex-shrink-0">
                       {c.name.charAt(0).toUpperCase()}
@@ -159,7 +171,7 @@ export default function AdminCandidates() {
                       <p className="text-xs text-gray-400 dark:text-gray-500">{c.votes || 0} votes received</p>
                     </div>
                   </div>
-                  <button onClick={() => deleteCandidate(c.id)}
+                  <button onClick={() => deleteCandidate(c._id)}
                     className="flex items-center gap-1.5 text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-1.5 rounded-lg transition">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     Remove
@@ -171,13 +183,12 @@ export default function AdminCandidates() {
         </div>
       )}
 
-      {/* All elections summary */}
       {!selectedElection && elections.length > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-6">
           <h2 className="font-bold text-gray-900 dark:text-white mb-4">All Elections — Candidate Summary</h2>
           <div className="space-y-3">
             {elections.map((e) => (
-              <button key={e.id} onClick={() => setSelectedId(String(e.id))}
+              <button key={e._id} onClick={() => setSelectedId(String(e._id))}
                 className="w-full flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-100 dark:border-slate-700 transition text-left">
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white text-sm">{e.title}</p>
@@ -187,6 +198,12 @@ export default function AdminCandidates() {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {loading && elections.length === 0 && (
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
     </div>

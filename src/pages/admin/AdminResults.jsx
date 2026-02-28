@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { electionsAPI } from "../../services/api";
 
 export default function AdminResults() {
-  const [elections, setElections] = useState(() => JSON.parse(localStorage.getItem("elections")) || []);
+  const [elections, setElections] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
-  const [confirmId, setConfirmId] = useState(null);   // publish confirm
+  const [confirmId, setConfirmId] = useState(null);
   const [unpublishId, setUnpublishId] = useState(null);
 
   const now = new Date();
   const getStatus = (e) => {
     if (now < new Date(e.startTime)) return "Upcoming";
-    if (now < new Date(e.endTime))   return "Live";
+    if (now < new Date(e.endTime)) return "Live";
     return "Ended";
   };
 
@@ -18,15 +20,33 @@ export default function AdminResults() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const togglePublish = (id, publish) => {
-    const updated = elections.map((e) =>
-      e.id === id ? { ...e, resultsPublished: publish } : e
-    );
-    localStorage.setItem("elections", JSON.stringify(updated));
-    setElections(updated);
-    setConfirmId(null);
-    setUnpublishId(null);
-    showToast(publish ? "Results published! Students can now see results." : "Results unpublished.");
+  useEffect(() => {
+    async function fetchElections() {
+      setLoading(true);
+      try {
+        const data = await electionsAPI.getAll();
+        setElections(Array.isArray(data) ? data : []);
+      } catch (err) {
+        showToast(err.message || "Failed to load elections", "error");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchElections();
+  }, []);
+
+  const togglePublish = async (id, publish) => {
+    try {
+      const res = await electionsAPI.publishResults(id, publish);
+      setElections((prev) =>
+        prev.map((e) => (e._id === id ? (res.election || { ...e, resultsPublished: publish }) : e))
+      );
+      setConfirmId(null);
+      setUnpublishId(null);
+      showToast(publish ? "Results published! Students can now see results." : "Results unpublished.");
+    } catch (err) {
+      showToast(err.message || "Failed to update", "error");
+    }
   };
 
   const endedElections   = elections.filter((e) => getStatus(e) === "Ended");
@@ -44,7 +64,7 @@ export default function AdminResults() {
       : { status: "tie",    names: winners.map((w) => w.name), votes: maxVotes };
   };
 
-  const totalVotes = (e) => (e.candidates || []).reduce((s, c) => s + (c.votes || 0), 0);
+  const totalVotes = (e) => e.votes ?? (e.candidates || []).reduce((s, c) => s + (c.votes || 0), 0);
 
   const sortedCandidates = (e) =>
     [...(e.candidates || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
@@ -136,7 +156,7 @@ export default function AdminResults() {
             {elections.filter((e) => getStatus(e) !== "Ended").map((e) => {
               const status = getStatus(e);
               return (
-                <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
+                <div key={e._id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
                   <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{e.title}</p>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${status === "Live" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"}`}>
                     {status}
@@ -149,7 +169,11 @@ export default function AdminResults() {
       )}
 
       {/* Ended elections — can publish */}
-      {endedElections.length === 0 ? (
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : endedElections.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
@@ -165,7 +189,7 @@ export default function AdminResults() {
             const sorted = sortedCandidates(e);
 
             return (
-              <div key={e.id} className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm overflow-hidden
+              <div key={e._id} className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm overflow-hidden
                 ${e.resultsPublished ? "border-green-200 dark:border-green-800" : "border-gray-200 dark:border-slate-700"}`}>
 
                 {/* Card header */}
@@ -186,13 +210,13 @@ export default function AdminResults() {
 
                   {/* Publish / Unpublish button */}
                   {e.resultsPublished ? (
-                    <button onClick={() => setUnpublishId(e.id)}
+                    <button onClick={() => setUnpublishId(e._id)}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition flex-shrink-0">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
                       Unpublish
                     </button>
                   ) : (
-                    <button onClick={() => setConfirmId(e.id)}
+                    <button onClick={() => setConfirmId(e._id)}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-green-700 hover:bg-green-800 text-white transition shadow-md flex-shrink-0">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                       Publish Results

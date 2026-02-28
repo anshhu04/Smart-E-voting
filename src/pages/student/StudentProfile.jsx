@@ -1,8 +1,12 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { removeToken, removeUser } from "../../services/api";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const getUser = () => JSON.parse(localStorage.getItem("loggedInUser")) || {};
+const getUser = () => {
+  const raw = localStorage.getItem("user") || localStorage.getItem("loggedInUser");
+  return raw ? JSON.parse(raw) : {};
+};
 const getSavedExtra = (studentId) =>
   JSON.parse(localStorage.getItem("profile_extra_" + studentId)) || {};
 const getPhotoSafe = (key) => {
@@ -158,7 +162,8 @@ export default function StudentProfile() {
   const handleCancel = () => setEditing(false);
 
   const handleLogout = () => {
-    localStorage.removeItem("loggedInUser");
+    removeToken();
+    removeUser();
     navigate("/login");
   };
 

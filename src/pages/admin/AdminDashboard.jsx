@@ -1,21 +1,44 @@
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { electionsAPI, usersAPI } from "../../services/api";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const elections = JSON.parse(localStorage.getItem("elections")) || [];
-  const users = JSON.parse(localStorage.getItem("users")) || [];
+  const [elections, setElections] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const now = new Date();
+
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const [electionsData, usersData] = await Promise.all([
+          electionsAPI.getAll(),
+          usersAPI.getAll(),
+        ]);
+        setElections(Array.isArray(electionsData) ? electionsData : []);
+        setUsers(Array.isArray(usersData) ? usersData : []);
+      } catch (err) {
+        setElections([]);
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
   const getStatus = (e) => {
     if (now < new Date(e.startTime)) return "Upcoming";
     if (now < new Date(e.endTime)) return "Live";
     return "Ended";
   };
 
-  const liveElections   = elections.filter((e) => getStatus(e) === "Live");
-  const endedElections  = elections.filter((e) => getStatus(e) === "Ended");
+  const liveElections = elections.filter((e) => getStatus(e) === "Live");
+  const endedElections = elections.filter((e) => getStatus(e) === "Ended");
   const upcomingElections = elections.filter((e) => getStatus(e) === "Upcoming");
-  const students        = users.filter((u) => u.role === "student");
+  const students = users;
   const totalVotes      = elections.reduce((s, e) => s + (e.votes || 0), 0);
   const publishedCount  = elections.filter((e) => e.resultsPublished).length;
   const totalCandidates = elections.reduce((s, e) => s + (e.candidates?.length || 0), 0);
@@ -43,6 +66,14 @@ export default function AdminDashboard() {
     if (status === "Upcoming") return <span className="text-xs font-bold text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 px-2 py-0.5 rounded-full">Upcoming</span>;
     return <span className="text-xs font-bold text-gray-500 bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">Ended</span>;
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -110,11 +141,11 @@ export default function AdminDashboard() {
           <p className="text-gray-400 text-sm text-center py-6">No elections created yet.</p>
         ) : (
           <div className="space-y-3">
-            {elections.slice(-5).reverse().map((e) => {
+            {[...elections].slice(-5).reverse().map((e) => {
               const status = getStatus(e);
-              const totalV = (e.candidates || []).reduce((s, c) => s + (c.votes || 0), 0);
+              const totalV = e.votes ?? (e.candidates || []).reduce((s, c) => s + (c.votes || 0), 0);
               return (
-                <div key={e.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
+                <div key={e._id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{e.title}</p>

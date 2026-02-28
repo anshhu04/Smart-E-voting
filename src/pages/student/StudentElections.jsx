@@ -1,40 +1,54 @@
 import { useNavigate } from "react-router-dom";
-
-// Check if a student is eligible for an election
-function isEligible(election, userExtra) {
-  const el = election.eligibility;
-  if (!el || el.scope === "all") return true;
-  const { departments, semesters, batches, programs } = el;
-  const matchDept    = !departments?.length || departments.includes(userExtra.department);
-  const matchSem     = !semesters?.length   || semesters.includes(userExtra.semester);
-  const matchBatch   = !batches?.length     || batches.includes(userExtra.batch);
-  const matchProgram = !programs?.length    || programs.includes(userExtra.program);
-  return matchDept && matchSem && matchBatch && matchProgram;
-}
+import { useState, useEffect } from "react";
+import { electionsAPI, votesAPI } from "../../services/api";
+import { getUser } from "../../services/api";
 
 export default function StudentElections() {
-  const allElections = JSON.parse(localStorage.getItem("elections")) || [];
-  const user         = JSON.parse(localStorage.getItem("loggedInUser"));
-  const userExtra    = JSON.parse(localStorage.getItem("profile_extra_" + user?.studentId)) || {};
-  // userExtra includes: department, semester, batch, program, section
-  const navigate     = useNavigate();
-  const now          = new Date();
+  const navigate = useNavigate();
+  const user = getUser() || {};
+  const userExtra = user.department !== undefined ? user : {};
 
-  // Only show elections this student is eligible for
-  const elections = allElections.filter((e) => isEligible(e, userExtra));
+  const [elections, setElections] = useState([]);
+  const [votedMap, setVotedMap] = useState({});
+  const [loading, setLoading] = useState(true);
 
+  const now = new Date();
   const getStatus = (e) => {
     const start = new Date(e.startTime);
-    const end   = new Date(e.endTime);
-    if (now < start)            return "Upcoming";
+    const end = new Date(e.endTime);
+    if (now < start) return "Upcoming";
     if (now >= start && now <= end) return "Live";
     return "Ended";
   };
 
-  const sorted   = [...elections].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-  const live     = sorted.filter((e) => getStatus(e) === "Live");
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const [electionsData, votesData] = await Promise.all([
+          electionsAPI.getAll(),
+          votesAPI.getMyVotes(),
+        ]);
+        setElections(Array.isArray(electionsData) ? electionsData : []);
+        const map = {};
+        for (const v of Array.isArray(votesData) ? votesData : []) {
+          const eid = v.election?._id ?? v.election;
+          if (eid) map[String(eid)] = v.candidateName || "";
+        }
+        setVotedMap(map);
+      } catch (err) {
+        setElections([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const sorted = [...elections].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+  const live = sorted.filter((e) => getStatus(e) === "Live");
   const upcoming = sorted.filter((e) => getStatus(e) === "Upcoming");
-  const ended    = sorted.filter((e) => getStatus(e) === "Ended");
+  const ended = sorted.filter((e) => getStatus(e) === "Ended");
 
   const statusBadge = (status) => {
     if (status === "Live")
@@ -48,31 +62,28 @@ export default function StudentElections() {
     return <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2.5 py-1 rounded-full">Ended</span>;
   };
 
-  // Scope label for the election
   const scopeLabel = (e) => {
     if (!e.eligibility || e.eligibility.scope === "all") return "All Students";
     const parts = [];
     if (e.eligibility.departments?.length) parts.push(e.eligibility.departments.join(", "));
-    if (e.eligibility.semesters?.length)   parts.push(e.eligibility.semesters.map((s) => s + " Sem").join(", "));
-    if (e.eligibility.batches?.length)     parts.push("Batch " + e.eligibility.batches.join("/"));
-    if (e.eligibility.programs?.length)    parts.push(e.eligibility.programs.join(", "));
+    if (e.eligibility.semesters?.length) parts.push(e.eligibility.semesters.map((s) => s + " Sem").join(", "));
+    if (e.eligibility.batches?.length) parts.push("Batch " + e.eligibility.batches.join("/"));
+    if (e.eligibility.programs?.length) parts.push(e.eligibility.programs.join(", "));
     return parts.join(" · ") || "All Students";
   };
 
   const ElectionCard = ({ e }) => {
     const status = getStatus(e);
-    const voteKey = "vote_" + user.studentId + "_" + e.id;
-    const voted   = localStorage.getItem(voteKey);
-    const start   = new Date(e.startTime);
-    const end     = new Date(e.endTime);
+    const voted = votedMap[String(e._id)] || null;
+    const start = new Date(e.startTime);
+    const end = new Date(e.endTime);
     const candidateCount = e.candidates?.length || 0;
 
     return (
       <div className={`bg-white dark:bg-slate-900 rounded-2xl p-6 border shadow-sm transition-all
-        ${status === "Live"     ? "border-green-200 dark:border-green-800"
+        ${status === "Live" ? "border-green-200 dark:border-green-800"
         : status === "Upcoming" ? "border-yellow-200 dark:border-yellow-800"
         : "border-gray-200 dark:border-slate-700"}`}>
-
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-gray-900 dark:text-white text-lg leading-snug">{e.title}</h2>
@@ -81,7 +92,6 @@ export default function StudentElections() {
           {statusBadge(status)}
         </div>
 
-        {/* Eligibility tag */}
         <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full mb-4
           ${e.eligibility?.scope === "all"
             ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400"
@@ -111,7 +121,7 @@ export default function StudentElections() {
         )}
 
         <button
-          onClick={() => navigate("/student/vote/" + e.id)}
+          onClick={() => navigate("/student/vote/" + e._id)}
           disabled={!!voted || status !== "Live"}
           className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all
             ${voted
@@ -127,6 +137,14 @@ export default function StudentElections() {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -134,12 +152,12 @@ export default function StudentElections() {
         <p className="text-gray-500 dark:text-gray-400 mt-1">Showing elections you are eligible to vote in</p>
       </div>
 
-      {/* Profile incomplete warning */}
-      {(!userExtra.department || !userExtra.semester || !userExtra.batch) && (
+      {(!user.department || !user.semester || !user.batch) && (
         <div className="flex items-start gap-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl px-4 py-3">
           <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
           <p className="text-sm text-yellow-800 dark:text-yellow-300">
-            <span className="font-bold">Your profile is incomplete.</span> Update your department, semester, and batch in your <button onClick={() => {}} className="underline font-semibold">Profile</button> to see all elections you're eligible for.
+            <span className="font-bold">Your profile is incomplete.</span> Update your department, semester, and batch in your{" "}
+            <button onClick={() => navigate("/student/profile")} className="underline font-semibold">Profile</button> to see all elections you're eligible for.
           </p>
         </div>
       )}
@@ -160,7 +178,7 @@ export default function StudentElections() {
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />Live Now ({live.length})
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {live.map((e) => <ElectionCard key={e.id} e={e} />)}
+                {live.map((e) => <ElectionCard key={e._id} e={e} />)}
               </div>
             </section>
           )}
@@ -168,7 +186,7 @@ export default function StudentElections() {
             <section>
               <h2 className="text-sm font-bold uppercase tracking-wider text-yellow-600 dark:text-yellow-400 mb-3">Upcoming ({upcoming.length})</h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {upcoming.map((e) => <ElectionCard key={e.id} e={e} />)}
+                {upcoming.map((e) => <ElectionCard key={e._id} e={e} />)}
               </div>
             </section>
           )}
@@ -176,7 +194,7 @@ export default function StudentElections() {
             <section>
               <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Ended ({ended.length})</h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {ended.map((e) => <ElectionCard key={e.id} e={e} />)}
+                {ended.map((e) => <ElectionCard key={e._id} e={e} />)}
               </div>
             </section>
           )}

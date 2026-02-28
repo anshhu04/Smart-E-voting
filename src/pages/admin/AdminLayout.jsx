@@ -1,14 +1,16 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
+import { getUser, removeToken, removeUser } from "../../services/api";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const admin = JSON.parse(localStorage.getItem("loggedInUser"));
+  const admin = getUser();
 
   const logout = () => {
-    localStorage.removeItem("loggedInUser");
+    removeToken();
+    removeUser();
     navigate("/login");
   };
 

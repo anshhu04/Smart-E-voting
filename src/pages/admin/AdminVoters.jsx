@@ -1,68 +1,129 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { usersAPI, electionsAPI, votesAPI } from "../../services/api";
 
 export default function AdminVoters() {
-  const elections = JSON.parse(localStorage.getItem("elections")) || [];
-  const allUsers  = JSON.parse(localStorage.getItem("users")) || [];
-  const students  = allUsers.filter((u) => u.role === "student");
+  const [students, setStudents] = useState([]);
+  const [elections, setElections] = useState([]);
+  const [votesByStudent, setVotesByStudent] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all"); // all | voted | not-voted
+  const [filter, setFilter] = useState("all");
 
-  const now = new Date();
-  const getStatus = (e) => {
-    if (now < new Date(e.startTime)) return "Upcoming";
-    if (now < new Date(e.endTime)) return "Live";
-    return "Ended";
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [usersRes, electionsRes] = await Promise.all([
+          usersAPI.getAll(),
+          electionsAPI.getAll(),
+        ]);
+        const userList = Array.isArray(usersRes) ? usersRes : [];
+        const electionList = Array.isArray(electionsRes) ? electionsRes : [];
+        setStudents(userList);
+        setElections(electionList);
+
+        const votesMap = {};
+        for (const election of electionList) {
+          const eid = election._id;
+          if (!eid) continue;
+          try {
+            const votes = await votesAPI.getElectionVotes(eid);
+            for (const v of Array.isArray(votes) ? votes : []) {
+              const voter = v.voter;
+              const voterId = voter?._id ?? voter;
+              if (!voterId) continue;
+              const sid = String(voterId);
+              if (!votesMap[sid]) votesMap[sid] = {};
+              votesMap[sid][eid] = v.candidateName || "";
+            }
+          } catch (e) {
+            console.warn("Failed to fetch votes for election", eid, e);
+          }
+        }
+        setVotesByStudent(votesMap);
+      } catch (err) {
+        setError(err.message || "Failed to load data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const getVotedCount = (student) => {
+    const sid = student._id ? String(student._id) : student.studentId;
+    const studentVotes = votesByStudent[sid] || {};
+    return Object.keys(studentVotes).length;
   };
 
-  const getVotedCount = (student) =>
-    elections.filter((e) => localStorage.getItem("vote_" + student.studentId + "_" + e.id)).length;
-
-  const getVotedFor = (student, electionId) =>
-    localStorage.getItem("vote_" + student.studentId + "_" + electionId);
+  const getVotedFor = (student, electionId) => {
+    const sid = student._id ? String(student._id) : student.studentId;
+    const studentVotes = votesByStudent[sid] || {};
+    return studentVotes[electionId] || null;
+  };
 
   const enriched = students.map((s) => ({
     ...s,
     votedCount: getVotedCount(s),
-    participation: elections.length > 0
-      ? Math.round((getVotedCount(s) / elections.length) * 100)
-      : 0,
+    participation:
+      elections.length > 0 ? Math.round((getVotedCount(s) / elections.length) * 100) : 0,
   }));
 
   const filtered = enriched.filter((s) => {
     const matchSearch =
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()) ||
-      s.studentId.toLowerCase().includes(search.toLowerCase());
+      (s.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.email || "").toLowerCase().includes(search.toLowerCase()) ||
+      (s.studentId || "").toLowerCase().includes(search.toLowerCase());
     const matchFilter =
-      filter === "all" ? true
-      : filter === "voted" ? s.votedCount > 0
-      : s.votedCount === 0;
+      filter === "all" ? true : filter === "voted" ? s.votedCount > 0 : s.votedCount === 0;
     return matchSearch && matchFilter;
   });
 
   const totalVotes = elections.reduce((s, e) => s + (e.votes || 0), 0);
   const activeVoters = enriched.filter((s) => s.votedCount > 0).length;
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Loading voters...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <p className="text-red-600 dark:text-red-400 font-medium mb-2">{error}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Make sure the backend is running and you are logged in as admin.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Voters</h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">View all registered students and their voting activity</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Registered Students", value: students.length,   color: "blue"   },
-          { label: "Active Voters",        value: activeVoters,     color: "green"  },
-          { label: "Total Votes Cast",     value: totalVotes,       color: "purple" },
-          { label: "Total Elections",      value: elections.length, color: "orange" },
+          { label: "Registered Students", value: students.length, color: "blue" },
+          { label: "Active Voters", value: activeVoters, color: "green" },
+          { label: "Total Votes Cast", value: totalVotes, color: "purple" },
+          { label: "Total Elections", value: elections.length, color: "orange" },
         ].map((s, i) => {
           const colorMap = {
-            blue:   "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
-            green:  "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400",
+            blue: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
+            green: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400",
             purple: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400",
             orange: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400",
           };
@@ -75,7 +136,6 @@ export default function AdminVoters() {
         })}
       </div>
 
-      {/* Filters & Search */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -95,7 +155,6 @@ export default function AdminVoters() {
         </div>
       </div>
 
-      {/* Students Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {filtered.length === 0 ? (
           <div className="text-center py-12">
@@ -112,18 +171,18 @@ export default function AdminVoters() {
             </div>
             <div className="divide-y divide-gray-50 dark:divide-slate-800">
               {filtered.map((s, i) => {
-                const initials = s.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-                const profilePhoto = localStorage.getItem("photo_profile_" + s.studentId);
+                const initials = (s.name || "").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+                const profilePhoto = s.profilePhoto || null;
                 return (
-                  <div key={i} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition">
+                  <div key={s._id || i} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        {/* Avatar */}
                         <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                          {profilePhoto
-                            ? <img src={profilePhoto} alt={s.name} className="w-full h-full object-cover" />
-                            : <span>{initials}</span>
-                          }
+                          {profilePhoto ? (
+                            <img src={profilePhoto} alt={s.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{initials || "?"}</span>
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{s.name}</p>
@@ -132,7 +191,6 @@ export default function AdminVoters() {
                       </div>
 
                       <div className="flex items-center gap-4 flex-shrink-0">
-                        {/* Participation bar */}
                         <div className="hidden sm:block w-28">
                           <div className="flex justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
                             <span>Participation</span>
@@ -146,25 +204,23 @@ export default function AdminVoters() {
                           </div>
                         </div>
 
-                        {/* Votes badge */}
                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full
-                          ${s.votedCount > 0
-                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400"
+                          ${s.votedCount > 0 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400"
                           }`}>
                           {s.votedCount}/{elections.length} voted
                         </span>
                       </div>
                     </div>
 
-                    {/* Voted elections detail */}
                     {s.votedCount > 0 && (
-                      <div className="mt-3 ml-13 flex flex-wrap gap-2 pl-13">
-                        {elections.filter((e) => getVotedFor(s, e.id)).map((e) => (
-                          <span key={e.id} className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800 px-2 py-0.5 rounded-full">
-                            ✓ {e.title} → <span className="font-semibold">{getVotedFor(s, e.id)}</span>
-                          </span>
-                        ))}
+                      <div className="mt-3 ml-12 flex flex-wrap gap-2 pl-12">
+                        {elections
+                          .filter((e) => getVotedFor(s, e._id))
+                          .map((e) => (
+                            <span key={e._id} className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800 px-2 py-0.5 rounded-full">
+                              ✓ {e.title} → <span className="font-semibold">{getVotedFor(s, e._id)}</span>
+                            </span>
+                          ))}
                       </div>
                     )}
                   </div>

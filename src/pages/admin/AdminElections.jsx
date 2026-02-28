@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { electionsAPI } from "../../services/api";
 
 // Election types with their default scope
 const ELECTION_TYPES = [
@@ -25,7 +26,8 @@ const emptyForm = {
 };
 
 export default function AdminElections() {
-  const [elections, setElections] = useState(() => JSON.parse(localStorage.getItem("elections")) || []);
+  const [elections, setElections] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [toast, setToast] = useState(null);
@@ -43,6 +45,21 @@ export default function AdminElections() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  useEffect(() => {
+    async function fetchElections() {
+      setLoading(true);
+      try {
+        const data = await electionsAPI.getAll();
+        setElections(Array.isArray(data) ? data : []);
+      } catch (err) {
+        showToast(err.message || "Failed to load elections", "error");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchElections();
+  }, []);
+
   const handleTypeChange = (typeVal) => {
     const found = ELECTION_TYPES.find((t) => t.value === typeVal);
     setForm((f) => ({ ...f, type: typeVal, scope: found?.scope || "all", departments: [], semesters: [], batches: [], programs: [], sections: [] }));
@@ -55,48 +72,47 @@ export default function AdminElections() {
     }));
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!form.title.trim()) return showToast("Enter election title", "error");
-    if (!form.type)         return showToast("Select election type", "error");
+    if (!form.type) return showToast("Select election type", "error");
     if (!form.startTime || !form.endTime) return showToast("Set start and end time", "error");
     if (new Date(form.startTime) >= new Date(form.endTime)) return showToast("End time must be after start time", "error");
 
     const eligibility = {
-      scope:       form.scope,
+      scope: form.scope,
       departments: form.departments,
-      semesters:   form.semesters,
-      batches:     form.batches,
-      programs:    form.programs,
-      sections:    form.sections,
+      semesters: form.semesters,
+      batches: form.batches,
+      programs: form.programs,
+      sections: form.sections,
     };
 
-    const newElection = {
-      id: Date.now(),
-      title:      form.title.trim(),
-      type:       form.type,
-      startTime:  form.startTime,
-      endTime:    form.endTime,
-      votes:      0,
-      candidates: [],
-      eligibility,
-      resultsPublished: false,
-    };
-
-    const updated = [...elections, newElection];
-    localStorage.setItem("elections", JSON.stringify(updated));
-    setElections(updated);
-    setForm(emptyForm);
-    setShowForm(false);
-    showToast("Election created successfully!");
+    try {
+      const created = await electionsAPI.create({
+        title: form.title.trim(),
+        type: form.type,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        eligibility,
+      });
+      setElections((prev) => [created, ...prev]);
+      setForm(emptyForm);
+      setShowForm(false);
+      showToast("Election created successfully!");
+    } catch (err) {
+      showToast(err.message || "Failed to create election", "error");
+    }
   };
 
-  const handleDelete = (id) => {
-    const updated = elections.filter((e) => e.id !== id);
-    localStorage.setItem("elections", JSON.stringify(updated));
-    localStorage.removeItem("candidates_" + id);
-    setElections(updated);
-    setDeleteId(null);
-    showToast("Election deleted");
+  const handleDelete = async (id) => {
+    try {
+      await electionsAPI.delete(id);
+      setElections((prev) => prev.filter((e) => e._id !== id));
+      setDeleteId(null);
+      showToast("Election deleted");
+    } catch (err) {
+      showToast(err.message || "Failed to delete election", "error");
+    }
   };
 
   const scopeLabel = (e) => {
@@ -329,7 +345,11 @@ export default function AdminElections() {
       )}
 
       {/* Elections List */}
-      {elections.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : elections.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
@@ -339,12 +359,12 @@ export default function AdminElections() {
         </div>
       ) : (
         <div className="space-y-4">
-          {[...elections].reverse().map((e) => {
+          {elections.map((e) => {
             const status = getStatus(e);
-            const totalV = (e.candidates || []).reduce((s, c) => s + (c.votes || 0), 0);
+            const totalV = e.votes ?? (e.candidates || []).reduce((s, c) => s + (c.votes || 0), 0);
             const typeMeta = ELECTION_TYPES.find((t) => t.value === e.type);
             return (
-              <div key={e.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-6">
+              <div key={e._id} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-6">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -380,7 +400,7 @@ export default function AdminElections() {
                     </div>
                   </div>
 
-                  <button onClick={() => setDeleteId(e.id)}
+                  <button onClick={() => setDeleteId(e._id)}
                     className="flex items-center gap-1.5 text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 transition flex-shrink-0">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     Delete

@@ -1,56 +1,89 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { electionsAPI, votesAPI } from "../../services/api";
+import { getUser } from "../../services/api";
 
 export default function StudentVote() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("loggedInUser"));
-
-  if (!user) return <div>Please login</div>;
-
-  const voteKey = "vote_" + user.studentId + "_" + id;
+  const user = getUser();
 
   const [election, setElection] = useState(null);
-  const [voted, setVoted] = useState(localStorage.getItem(voteKey));
+  const [voted, setVoted] = useState(null);
   const [selected, setSelected] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const elections = JSON.parse(localStorage.getItem("elections")) || [];
-    const found = elections.find((e) => String(e.id) === String(id));
-    if (found) {
-      const fixedCandidates = (found.candidates || []).map((c) =>
-        typeof c === "string" ? { name: c, votes: 0 } : c
-      );
-      found.candidates = fixedCandidates;
-      setElection(found);
+    async function fetchData() {
+      if (!id) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const [electionData, voteStatus] = await Promise.all([
+          electionsAPI.getById(id),
+          votesAPI.checkVote(id),
+        ]);
+        setElection(electionData);
+        setVoted(voteStatus?.voted ? (voteStatus.candidateName || true) : null);
+      } catch (err) {
+        setError(err.message || "Failed to load");
+      } finally {
+        setLoading(false);
+      }
     }
+    fetchData();
   }, [id]);
 
-  const submitVote = () => {
+  const submitVote = async () => {
     if (!selected || voted) return;
 
-    const elections = JSON.parse(localStorage.getItem("elections")) || [];
-    const updated = elections.map((e) => {
-      if (String(e.id) === String(id)) {
-        return {
-          ...e,
-          votes: (e.votes || 0) + 1,
-          candidates: e.candidates.map((c) =>
-            c.name === selected ? { ...c, votes: (c.votes || 0) + 1 } : c
-          ),
-        };
-      }
-      return e;
-    });
-
-    localStorage.setItem("elections", JSON.stringify(updated));
-    localStorage.setItem(voteKey, selected);
-    setVoted(selected);
-    setConfirming(false);
-    setSuccess(true);
+    try {
+      await votesAPI.cast(id, selected);
+      setVoted(selected);
+      setConfirming(false);
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to submit vote");
+      setConfirming(false);
+    }
   };
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <p className="text-gray-500 dark:text-gray-400">Please log in to vote.</p>
+          <button onClick={() => navigate("/login")} className="mt-3 text-blue-700 dark:text-blue-400 text-sm font-medium hover:underline">
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && !election) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error && !election) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <p className="text-red-600 dark:text-red-400 mb-2">{error}</p>
+          <button onClick={() => navigate("/student/elections")} className="text-blue-700 dark:text-blue-400 text-sm font-medium hover:underline">
+            ← Back to Elections
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!election) {
     return (
@@ -70,7 +103,6 @@ export default function StudentVote() {
     );
   }
 
-  // Success screen
   if (success) {
     return (
       <div className="max-w-lg mx-auto">
@@ -98,7 +130,6 @@ export default function StudentVote() {
     );
   }
 
-  // Already voted screen
   if (voted) {
     return (
       <div className="max-w-lg mx-auto">
@@ -119,9 +150,10 @@ export default function StudentVote() {
     );
   }
 
+  const candidates = election.candidates || [];
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
       <div>
         <button onClick={() => navigate("/student/elections")} className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-700 dark:hover:text-blue-400 font-medium mb-4 transition">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -140,7 +172,6 @@ export default function StudentVote() {
         </div>
       </div>
 
-      {/* Instructions */}
       <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
         <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
@@ -150,18 +181,23 @@ export default function StudentVote() {
         </p>
       </div>
 
-      {/* Candidates */}
-      {election.candidates.length === 0 ? (
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 text-sm">
+          {error}
+        </div>
+      )}
+
+      {candidates.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-10 text-center border border-gray-200 dark:border-slate-700">
           <p className="text-gray-500 dark:text-gray-400">No candidates have been added to this election yet.</p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
-          {election.candidates.map((c, i) => {
+          {candidates.map((c, i) => {
             const isSelected = selected === c.name;
             return (
               <button
-                key={c.name}
+                key={c.name || i}
                 onClick={() => setSelected(c.name)}
                 className={`text-left p-5 rounded-2xl border-2 transition-all shadow-sm w-full
                   ${isSelected
@@ -174,11 +210,7 @@ export default function StudentVote() {
                     {c.name.charAt(0).toUpperCase()}
                   </div>
                   <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                    ${isSelected
-                      ? "border-blue-700 bg-blue-700"
-                      : "border-gray-300 dark:border-gray-600"
-                    }`}
-                  >
+                    ${isSelected ? "border-blue-700 bg-blue-700" : "border-gray-300 dark:border-gray-600"}`}>
                     {isSelected && (
                       <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -188,17 +220,14 @@ export default function StudentVote() {
                 </div>
                 <h3 className="font-bold text-gray-900 dark:text-white text-lg">{c.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Candidate #{i + 1}</p>
-                {isSelected && (
-                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mt-2">✓ Selected</p>
-                )}
+                {isSelected && <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mt-2">✓ Selected</p>}
               </button>
             );
           })}
         </div>
       )}
 
-      {/* Vote Button */}
-      {election.candidates.length > 0 && (
+      {candidates.length > 0 && (
         <div className="flex gap-3">
           <button
             onClick={() => navigate("/student/elections")}
@@ -209,7 +238,7 @@ export default function StudentVote() {
           <button
             disabled={!selected}
             onClick={() => setConfirming(true)}
-            className={`flex-2 px-8 py-3 rounded-xl font-semibold transition-all
+            className={`flex-[2] px-8 py-3 rounded-xl font-semibold transition-all
               ${selected
                 ? "bg-blue-800 hover:bg-blue-900 text-white shadow-md shadow-blue-900/20"
                 : "bg-gray-200 dark:bg-slate-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
@@ -220,7 +249,6 @@ export default function StudentVote() {
         </div>
       )}
 
-      {/* Confirmation Modal */}
       {confirming && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-slate-700">
