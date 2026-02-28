@@ -93,7 +93,7 @@ export default function StudentLayout() {
               </svg>
             </div>
             <div>
-              <h2 className="text-white font-bold text-lg leading-tight">Smart Voting</h2>
+              <h2 className="text-white font-bold text-lg leading-tight">Smart E-Voting</h2>
               <p className="text-slate-400 text-xs">Student Portal</p>
             </div>
           </div>
