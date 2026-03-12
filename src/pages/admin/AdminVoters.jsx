@@ -1,108 +1,59 @@
 import { useState, useEffect } from "react";
-import { usersAPI, electionsAPI, votesAPI } from "../../services/api";
+import { usersAPI, votesAPI } from "../../services/api";
 
 export default function AdminVoters() {
-  const [students, setStudents] = useState([]);
-  const [elections, setElections] = useState([]);
-  const [votesByStudent, setVotesByStudent] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [students,  setStudents]  = useState([]);
+  const [allVotes,  setAllVotes]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [search,      setSearch]      = useState("");
+  const [filterDept,  setFilterDept]  = useState("");
+  const [filterSem,   setFilterSem]   = useState("");
+  const [filterBatch, setFilterBatch] = useState("");
 
+  // ── Fetch from backend ────────────────────────────────────────────────────
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      setError(null);
+    const load = async () => {
       try {
-        const [usersRes, electionsRes] = await Promise.all([
+        setLoading(true);
+        const [usersData] = await Promise.all([
           usersAPI.getAll(),
-          electionsAPI.getAll(),
         ]);
-        const userList = Array.isArray(usersRes) ? usersRes : [];
-        const electionList = Array.isArray(electionsRes) ? electionsRes : [];
-        setStudents(userList);
-        setElections(electionList);
-
-        const votesMap = {};
-        for (const election of electionList) {
-          const eid = election._id;
-          if (!eid) continue;
-          try {
-            const votes = await votesAPI.getElectionVotes(eid);
-            for (const v of Array.isArray(votes) ? votes : []) {
-              const voter = v.voter;
-              const voterId = voter?._id ?? voter;
-              if (!voterId) continue;
-              const sid = String(voterId);
-              if (!votesMap[sid]) votesMap[sid] = {};
-              votesMap[sid][eid] = v.candidateName || "";
-            }
-          } catch (e) {
-            console.warn("Failed to fetch votes for election", eid, e);
-          }
-        }
-        setVotesByStudent(votesMap);
+        setStudents(usersData);
       } catch (err) {
-        setError(err.message || "Failed to load data");
+        console.error("Failed to load voters:", err);
       } finally {
         setLoading(false);
       }
-    }
-    fetchData();
+    };
+    load();
   }, []);
 
-  const getVotedCount = (student) => {
-    const sid = student._id ? String(student._id) : student.studentId;
-    const studentVotes = votesByStudent[sid] || {};
-    return Object.keys(studentVotes).length;
-  };
+  // ── Unique filter options from fetched students ───────────────────────────
+  const allDepts   = [...new Set(students.map((s) => s.department).filter(Boolean))];
+  const allSems    = [...new Set(students.map((s) => s.semester).filter(Boolean))];
+  const allBatches = [...new Set(students.map((s) => s.batch).filter(Boolean))];
 
-  const getVotedFor = (student, electionId) => {
-    const sid = student._id ? String(student._id) : student.studentId;
-    const studentVotes = votesByStudent[sid] || {};
-    return studentVotes[electionId] || null;
-  };
-
-  const enriched = students.map((s) => ({
-    ...s,
-    votedCount: getVotedCount(s),
-    participation:
-      elections.length > 0 ? Math.round((getVotedCount(s) / elections.length) * 100) : 0,
-  }));
-
-  const filtered = enriched.filter((s) => {
-    const matchSearch =
-      (s.name || "").toLowerCase().includes(search.toLowerCase()) ||
-      (s.email || "").toLowerCase().includes(search.toLowerCase()) ||
-      (s.studentId || "").toLowerCase().includes(search.toLowerCase());
-    const matchFilter =
-      filter === "all" ? true : filter === "voted" ? s.votedCount > 0 : s.votedCount === 0;
-    return matchSearch && matchFilter;
+  // ── Filter ────────────────────────────────────────────────────────────────
+  const filtered = students.filter((s) => {
+    const matchSearch = !search ||
+      s.name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.email?.toLowerCase().includes(search.toLowerCase()) ||
+      s.studentId?.toLowerCase().includes(search.toLowerCase());
+    const matchDept  = !filterDept  || s.department === filterDept;
+    const matchSem   = !filterSem   || s.semester   === filterSem;
+    const matchBatch = !filterBatch || s.batch      === filterBatch;
+    return matchSearch && matchDept && matchSem && matchBatch;
   });
 
-  const totalVotes = elections.reduce((s, e) => s + (e.votes || 0), 0);
-  const activeVoters = enriched.filter((s) => s.votedCount > 0).length;
+  const initials = (name) =>
+    (name || "?").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
+  // ── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Loading voters...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="text-center">
-          <p className="text-red-600 dark:text-red-400 font-medium mb-2">{error}</p>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Make sure the backend is running and you are logged in as admin.</p>
-        </div>
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -111,125 +62,120 @@ export default function AdminVoters() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Voters</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">View all registered students and their voting activity</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
+          {students.length} registered student{students.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Registered Students", value: students.length, color: "blue" },
-          { label: "Active Voters", value: activeVoters, color: "green" },
-          { label: "Total Votes Cast", value: totalVotes, color: "purple" },
-          { label: "Total Elections", value: elections.length, color: "orange" },
-        ].map((s, i) => {
-          const colorMap = {
-            blue: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
-            green: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400",
-            purple: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400",
-            orange: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400",
-          };
-          return (
-            <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-5">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">{s.label}</p>
-              <h3 className={`text-3xl font-bold mt-1 ${colorMap[s.color].split(" ").slice(-2).join(" ")}`}>{s.value}</h3>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, email or student ID..."
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition"
-          />
-        </div>
-        <div className="flex gap-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-1">
-          {[{ key: "all", label: "All" }, { key: "voted", label: "Voted" }, { key: "not-voted", label: "Not Voted" }].map((f) => (
-            <button key={f.key} onClick={() => setFilter(f.key)} className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition ${filter === f.key ? "bg-blue-800 text-white shadow" : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-            </div>
-            <p className="text-gray-500 dark:text-gray-400 font-medium">No students found</p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Students who register will appear here.</p>
+          { label: "Total Students", value: students.length,                                              color: "blue"   },
+          { label: "Profile Complete", value: students.filter((s) => s.department && s.semester).length, color: "green"  },
+          { label: "No Profile Yet",   value: students.filter((s) => !s.department).length,              color: "orange" },
+        ].map((s, i) => (
+          <div key={i} className={`rounded-2xl p-4 text-center border
+            ${s.color === "blue"   ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+            : s.color === "green"  ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+            : "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800"}`}>
+            <p className={`text-2xl font-bold
+              ${s.color === "blue"   ? "text-blue-700 dark:text-blue-400"
+              : s.color === "green"  ? "text-green-700 dark:text-green-400"
+              : "text-orange-700 dark:text-orange-400"}`}>
+              {s.value}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{s.label}</p>
           </div>
-        ) : (
-          <>
-            <div className="px-6 py-3 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{filtered.length} student{filtered.length !== 1 ? "s" : ""} found</p>
-            </div>
-            <div className="divide-y divide-gray-50 dark:divide-slate-800">
-              {filtered.map((s, i) => {
-                const initials = (s.name || "").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-                const profilePhoto = s.profilePhoto || null;
-                return (
-                  <div key={s._id || i} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                          {profilePhoto ? (
-                            <img src={profilePhoto} alt={s.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span>{initials || "?"}</span>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{s.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.email} · ID: {s.studentId}</p>
-                        </div>
-                      </div>
+        ))}
+      </div>
 
-                      <div className="flex items-center gap-4 flex-shrink-0">
-                        <div className="hidden sm:block w-28">
-                          <div className="flex justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
-                            <span>Participation</span>
-                            <span>{s.participation}%</span>
-                          </div>
-                          <div className="h-1.5 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${s.participation === 100 ? "bg-green-500" : s.participation > 0 ? "bg-blue-600" : "bg-gray-300 dark:bg-slate-600"}`}
-                              style={{ width: `${s.participation}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full
-                          ${s.votedCount > 0 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400"
-                          }`}>
-                          {s.votedCount}/{elections.length} voted
-                        </span>
-                      </div>
-                    </div>
-
-                    {s.votedCount > 0 && (
-                      <div className="mt-3 ml-12 flex flex-wrap gap-2 pl-12">
-                        {elections
-                          .filter((e) => getVotedFor(s, e._id))
-                          .map((e) => (
-                            <span key={e._id} className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800 px-2 py-0.5 rounded-full">
-                              ✓ {e.title} → <span className="font-semibold">{getVotedFor(s, e._id)}</span>
-                            </span>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
+      {/* Filters */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-4 flex flex-wrap gap-3">
+        <input
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, email, ID..."
+          className="flex-1 min-w-48 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition"
+        />
+        {[
+          { label: "Department", value: filterDept,  setter: setFilterDept,  options: allDepts   },
+          { label: "Semester",   value: filterSem,   setter: setFilterSem,   options: allSems    },
+          { label: "Batch",      value: filterBatch, setter: setFilterBatch, options: allBatches },
+        ].map((f) => (
+          <select key={f.label} value={f.value} onChange={(e) => f.setter(e.target.value)}
+            className="p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition">
+            <option value="">All {f.label}s</option>
+            {f.options.map((o) => <option key={o}>{o}</option>)}
+          </select>
+        ))}
+        {(search || filterDept || filterSem || filterBatch) && (
+          <button
+            onClick={() => { setSearch(""); setFilterDept(""); setFilterSem(""); setFilterBatch(""); }}
+            className="px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition">
+            Clear
+          </button>
         )}
       </div>
+
+      {/* Student List */}
+      {students.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 p-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197"/>
+            </svg>
+          </div>
+          <p className="text-gray-500 dark:text-gray-400">No students registered yet.</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 p-12 text-center">
+          <p className="text-gray-500 dark:text-gray-400">No students match the current filters.</p>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Showing {filtered.length} of {students.length} students
+            </p>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-slate-700">
+            {filtered.map((s) => (
+              <div key={s._id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-800 transition">
+
+                {/* Avatar — now loaded from MongoDB via backend */}
+                <div className="w-11 h-11 rounded-full overflow-hidden bg-blue-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 border-2 border-white dark:border-slate-700 shadow-sm">
+                  {s.profilePhoto
+                    ? <img src={s.profilePhoto} alt={s.name} className="w-full h-full object-cover" />
+                    : <span>{initials(s.name)}</span>
+                  }
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm">{s.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.email} · ID: {s.studentId}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {s.program    && <span className="text-xs font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full">{s.program}</span>}
+                    {s.department && <span className="text-xs font-medium bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full">{s.department}</span>}
+                    {s.semester   && <span className="text-xs font-medium bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">{s.semester} Sem</span>}
+                    {s.batch      && <span className="text-xs font-medium bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded-full">Batch {s.batch}</span>}
+                    {s.section    && <span className="text-xs font-medium bg-teal-100 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 px-2 py-0.5 rounded-full">Sec {s.section}</span>}
+                  </div>
+                </div>
+
+                {/* Role badge */}
+                <div className="text-right flex-shrink-0">
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400">
+                    Student
+                  </span>
+                  {!s.department && (
+                    <p className="text-xs text-orange-500 mt-1">Profile incomplete</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -72,7 +72,7 @@ export default function StudentProfile() {
   }, []);
 
   // ── Photo Upload ──────────────────────────────────────────────────────────
-  const handlePhotoUpload = (e, type) => {
+  const handlePhotoUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
@@ -81,28 +81,57 @@ export default function StudentProfile() {
     }
     setPhotoError("");
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const data = reader.result;
+
+      // 1. Save to localStorage for instant local display
       const key = type === "profile"
         ? "photo_profile_" + user?.studentId
         : "photo_cover_"   + user?.studentId;
-      const ok = savePhotoSafe(key, data);
-      if (!ok) { setPhotoError("Storage full. Try a smaller image."); return; }
+      savePhotoSafe(key, data);
+
+      // 2. Update UI instantly
       if (type === "profile") setProfilePhoto(data);
       else                    setCoverPhoto(data);
+
+      // 3. Save to MongoDB so admin can see updated photo
+      try {
+        const payload = type === "profile"
+          ? { profilePhoto: data }
+          : { coverPhoto: data };
+        await usersAPI.updateProfile(payload);
+      } catch (err) {
+        console.error("Failed to sync photo to backend:", err);
+        // Photo still works locally even if backend sync fails
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
 
   // ── Remove Photo ──────────────────────────────────────────────────────────
-  const handleRemovePhoto = (type) => {
+  const handleRemovePhoto = async (type) => {
     const key = type === "profile"
       ? "photo_profile_" + user?.studentId
       : "photo_cover_"   + user?.studentId;
+
+    // 1. Remove from localStorage
     try { localStorage.removeItem(key); } catch {}
+
+    // 2. Update UI instantly
     if (type === "profile") setProfilePhoto(null);
     else                    setCoverPhoto(null);
+
+    // 3. Sync removal to MongoDB so admin sees it removed too
+    try {
+      const payload = type === "profile"
+        ? { profilePhoto: "" }
+        : { coverPhoto: "" };
+      await usersAPI.updateProfile(payload);
+    } catch (err) {
+      console.error("Failed to sync photo removal to backend:", err);
+    }
+
     showToast(type === "profile" ? "Profile photo removed" : "Cover photo removed");
   };
 
